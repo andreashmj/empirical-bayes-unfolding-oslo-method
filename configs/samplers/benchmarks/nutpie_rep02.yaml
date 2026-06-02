@@ -1,0 +1,42 @@
+prior:
+  draws: 2000
+  random_seed: 100
+  
+initialization:
+  rl_init: true
+
+nuts:
+  nuts_sampler: nutpie
+  draws: 2000
+  tune: 2000
+  chains: 4
+  target_accept: 0.90
+  max_treedepth: 13
+  random_seed: 102
+
+  nutpie:
+    compile_backend: numba
+    cores: 4
+    save_warmup: false
+    store_divergences: true
+    progressbar: true
+    use_initial_points: true
+    
+
+profiles:
+  low_ex:
+    nuts:
+      target_accept: 0.99
+      
+  mid_ex:
+    nuts:
+      target_accept: 0.95
+      
+  default:
+    nuts:
+      target_accept: 0.90
+
+mapping:
+  - {range: [0, 3000], profile: low_ex}
+  - {range: [3000, 6000], profile: mid_ex}
+  - {range: [6000, 1.0e9], profile: default}

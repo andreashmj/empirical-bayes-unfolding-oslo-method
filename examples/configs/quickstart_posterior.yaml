@@ -1,0 +1,37 @@
+output_dir: results
+dataset_id: examples/quickstart
+run_id: posterior_demo
+
+mat_path: data/ExEg_1e8.npz
+
+mode: posterior
+transform: log
+
+ex_energies: [2500]
+rebin_factors: [10, 2]
+mat_scale: 1.0
+lower_eg_cut: "60keV"
+
+include_background: true
+bg_fraction: 0.15
+bg_flat_fraction: 0.10
+
+background_model:
+  kind: latent_gamma
+  a0: 1.0
+
+eg_tail_mass: 1.0e-6
+
+response_db: OSCAR2020
+sigma_eg_gen: "30keV"
+sigma_eg_unfold: "30keV"
+
+include_ex_smearing: false
+fwhm_ex_kev: 150.0
+
+prior_config: examples/configs/quickstart_prior.yaml
+sample_config: examples/configs/quickstart_sampler.yaml
+
+save_trace: false
+debug: true
+rng_seed: 100

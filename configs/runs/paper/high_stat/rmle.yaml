@@ -1,0 +1,38 @@
+output_dir: results
+dataset_id: paper/high_stat
+
+mat_path: data/ExEg_1e8.npz
+
+ex_energies: [4000]
+rebin_factors: [10, 2]
+mat_scale: 1.0
+lower_eg_cut: "60keV"
+
+include_background: true
+bg_fraction: 0.15
+bg_flat_fraction: 0.10
+eg_tail_mass: 1.0e-6
+
+response_db: OSCAR2020
+sigma_eg_gen: "30keV"
+sigma_eg_unfold: "30keV"
+
+include_ex_smearing: false
+fwhm_ex_kev: 150.0
+
+rng_seed: 100
+
+freq_iterations: 10000
+freq_bootstrap: 1000
+freq_bootstrap_seed: 123
+freq_ci_method: "bonferroni percentile"
+freq_ci_summary: "mean"
+freq_ci_alpha: 0.05
+freq_mask: "last nonzero"
+freq_initial: "raw"
+
+freq_penalty: "sparsity"
+freq_alpha_selection: "w1"
+freq_sparsity_alpha_grid: [1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0]
+freq_sparsity_threshold: 0.1
+freq_sparsity_smoothing: 100.0

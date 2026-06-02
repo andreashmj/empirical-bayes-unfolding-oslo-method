@@ -1,0 +1,37 @@
+output_dir: results
+dataset_id: benchmarks/high_stat
+run_id: blackjax_rep03
+
+mat_path: data/ExEg_1e8.npz
+
+mode: posterior
+transform: log
+
+ex_energies: [2500, 4000, 9500]
+rebin_factors: [10, 2]
+mat_scale: 1.0
+lower_eg_cut: "60keV"
+
+include_background: true
+bg_fraction: 0.15
+bg_flat_fraction: 0.10
+
+background_model:
+  kind: latent_gamma
+  a0: 1.0
+
+eg_tail_mass: 1.0e-6
+
+response_db: OSCAR2020
+sigma_eg_gen: "30keV"
+sigma_eg_unfold: "30keV"
+
+include_ex_smearing: false
+fwhm_ex_kev: 150.0
+
+prior_config: configs/priors/gamma_lognormal_mean_rl/baseline.yaml
+sample_config: configs/samplers/benchmarks/blackjax_rep03.yaml
+
+save_trace: true
+debug: false
+rng_seed: 200

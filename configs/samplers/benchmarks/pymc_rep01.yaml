@@ -1,0 +1,39 @@
+prior:
+  draws: 2000
+  random_seed: 100
+  
+initialization:
+  rl_init: true
+
+nuts:
+  nuts_sampler: pymc
+  draws: 2000
+  tune: 2000
+  chains: 4
+  target_accept: 0.90
+  max_treedepth: 13
+  random_seed: 101
+
+  pymc:
+    cores: 4
+    init: jitter+adapt_diag
+    dense_mass: false
+    progressbar: true
+
+profiles:
+  low_ex:
+    nuts:
+      target_accept: 0.99
+      
+  mid_ex:
+    nuts:
+      target_accept: 0.95
+
+  default:
+    nuts:
+      target_accept: 0.90
+
+mapping:
+  - {range: [0, 3000], profile: low_ex}
+  - {range: [3000, 6000], profile: mid_ex}
+  - {range: [6000, 1.0e9], profile: default}

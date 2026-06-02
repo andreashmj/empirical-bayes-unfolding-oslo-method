@@ -1,0 +1,22 @@
+profiles:
+  default:
+    dist: gamma_lognormal_mean_rl
+    params:
+      alpha: 1.0
+
+      # Eta-space adaptive prior-width schedule.
+      # c_ref is the local eta-space count level where the RL shape
+      # information is half activated.
+      sigma_min: 1.0
+      sigma_max: 3.0
+      c_ref: 100.0
+
+      # Baseline: automatic eta-space semi-convergence stopping.
+      # Sensitivity tests can replace auto by an integer, e.g. 30 or 1000.
+      rl_iterations: auto
+
+      # Analysis choices.
+      rl_floor: 1.0e-1
+
+mapping:
+  - {range: [0, 1.0e9], profile: default}

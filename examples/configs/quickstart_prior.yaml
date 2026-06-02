@@ -1,0 +1,13 @@
+profiles:
+  baseline:
+    dist: gamma_lognormal_mean_rl
+    params:
+      alpha: 1.0
+      sigma_min: 1.0
+      sigma_max: 3.0
+      c_ref: 100.0
+      rl_iterations: auto
+      rl_floor: 1.0e-1
+
+mapping:
+  - {range: [0, 1.0e9], profile: baseline}

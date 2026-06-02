@@ -1,0 +1,16 @@
+arviz==0.20.0
+blackjax==1.5
+h5netcdf==1.5.0
+h5py==3.12.1
+jax==0.10.0
+jaxlib==0.10.0
+matplotlib==3.10.1
+numpy==2.2.6
+numpyro==0.21.0
+nutpie==0.16.4
+pandas==2.2.3
+pymc==5.27.1
+pytensor==2.37.0
+PyYAML==6.0.2
+scipy==1.17.1
+xarray==2025.1.2

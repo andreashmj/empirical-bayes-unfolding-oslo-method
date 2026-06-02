@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Local environments
+.env
+.venv/
+venv/
+conda-env/
+
+# Logs
+logs/
+*.log
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Heavy generated outputs
+results/**/*.nc
+results/**/draws.nc
+results/**/trace.nc
+results/**/summary.npz
+results/**/data.csv
+results/**/meta.json
+results/**/provenance.json
+
+# Temporary files
+*.tmp
+*.bak
