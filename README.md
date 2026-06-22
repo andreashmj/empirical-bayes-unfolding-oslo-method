@@ -293,7 +293,7 @@ The response operators are stored in each result file so that these derived
 quantities can be reconstructed exactly.
 
 Large `draws.nc` files and the other complete paper outputs are not committed
-to GitHub because of their size. They will be included in the Zenodo archive.
+to GitHub because of their size. They are included in the Zenodo archive.
 
 ## Benchmark summary tables
 
@@ -346,9 +346,21 @@ The complete workflow is:
 
 ## Citation
 
-Citation metadata are provided in `CITATION.cff`. 
+The fixed code-and-results archive for version 1.0.0 is available on Zenodo:
+
+> Andreas Halkjelsvik Mjøs, *Empirical-Bayes unfolding of γ-ray spectra:
+> code and results*, version 1.0.0, Zenodo.  
+> DOI: 10.5281/zenodo.20797045
+
+Machine-readable citation metadata are provided in `CITATION.cff`.
+
+The citation for the associated article will be added after publication.
 
 ## License
 
-The source code is distributed under the GNU General Public License v3.0.
-See `LICENSE` for details.
+The source code and configuration scripts are distributed under the GNU
+General Public License v3.0 or later. See `LICENSE` for details.
+
+The generated synthetic data, result files, benchmark tables, and figures in
+the Zenodo archive are distributed under the Creative Commons Attribution 4.0
+International license.

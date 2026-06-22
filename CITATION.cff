@@ -1,13 +1,21 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite the archived software release."
-title: "Empirical-Bayes unfolding of gamma-ray spectra"
+message: "If you use this software or the archived results, please cite the Zenodo record."
+title: "Empirical-Bayes unfolding of γ-ray spectra: code and results"
 type: software
-version: 1.0.0
+version: "1.0.0"
+
 authors:
   - family-names: "Mjøs"
-    given-names: "Andreas H."
+    given-names: "Andreas Halkjelsvik"
+
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.20797045"
+    description: "Zenodo archive for version 1.0.0"
+
 repository-code: "https://github.com/andreashmj/empirical-bayes-unfolding-oslo-method"
-license: "GPL-3.0-only"
+license: "GPL-3.0-or-later"
+
 keywords:
   - Bayesian unfolding
   - empirical Bayes
