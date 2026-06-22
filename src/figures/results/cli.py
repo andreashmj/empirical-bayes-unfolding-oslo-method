@@ -94,16 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
     sensitivity.add_argument("--baseline-post", required=True)
     sensitivity.add_argument("--alts-post", nargs="+", required=True)
     sensitivity.add_argument("--scheme",
-        choices=[
-            "alpha",
-            "sigma",
-            "rl",
-            "prior",
-            "prior-components",
-            "lowstat-prior",
-            "generic",
-            "custom",
-            ],
+        choices=[ "alpha", "sigma", "rl", "prior", "prior-components", "lowstat-prior", "generic", "custom" ],
         default="generic",
     )
     sensitivity.add_argument("--labels", nargs="+", default=None)

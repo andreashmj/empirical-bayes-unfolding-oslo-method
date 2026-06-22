@@ -1,26 +1,27 @@
-# Empirical-Bayes unfolding in the Oslo method
+# Empirical-Bayes unfolding of γ-ray spectra
 
-This repository contains the code used for empirical-Bayes Bayesian unfolding
-of synthetic Oslo-method gamma-ray spectra.
+This repository contains the code and configuration files used for
+empirical-Bayes unfolding of synthetic Oslo-method γ-ray spectra.
 
-The method models the emitted spectrum with a Poisson forward model, uses a
-Richardson-Lucy reference for empirical-Bayes prior construction, samples the
-posterior with NUTS through PyMC, and compares the Bayesian result with an
-OMpy RMLE frequentist unfolding.
+The framework uses a Poisson forward model, a Richardson-Lucy reference for
+empirical-Bayes prior construction, and NUTS posterior sampling through PyMC.
+It also includes a comparison with the frequentist regularized
+maximum-likelihood implementation in OMpy.
 
-The repository contains code for
+The repository contains code and configuration files for
 
-- synthetic data generation,
+- synthetic-data generation,
 - empirical-Bayes prior construction,
-- Bayesian posterior sampling,
-- posterior diagnostics,
-- result and methods figures,
+- Bayesian prior and posterior sampling,
+- posterior diagnostics and predictive checks,
+- methods and results figures,
 - sampler-backend benchmark summaries,
 - and the frequentist RMLE comparison.
 
-This repository is the code release candidate for the manuscript. A versioned
-archival release and DOI will be created through Zenodo after the manuscript
-and repository contents are finalized.
+The GitHub repository contains the source code, configuration files, tests,
+examples, and other lightweight reproducibility material. The complete
+generated result files are too large for normal Git version control and will
+therefore be distributed through the associated Zenodo archive.
 
 ## Repository structure
 
@@ -33,7 +34,7 @@ src/
 
     prior/                        Richardson-Lucy prior construction
     analysis/                     Result readers, diagnostics, benchmark summaries
-    figures/                      Paper figure scripts
+    figures/                      Methods and results figure scripts
     frequentist/                  OMpy RMLE comparison runner
 
 configs/
@@ -42,57 +43,60 @@ configs/
     samplers/                     Sampler configurations
 
 data/
-    Input data files. Large files may be supplied separately.
+    Input data files. Large archived inputs may be omitted from Git.
 
 examples/
-    Small example workflow and quickstart scripts.
+    Small example workflows and quick-test scripts.
 
 tests/
     Unit tests for configuration handling, prior construction, response
     normalization, result-array conventions, and PyMC helper functions.
 
 results/
-    Generated result files. Large posterior files are normally not committed.
+    Generated Bayesian, RMLE, and benchmark outputs. Large result files are
+    omitted from Git and included in the Zenodo archive.
 
 figures/
-    Generated paper figures. Final figures may be included intentionally, but
-    large intermediate outputs should be regenerated or archived separately.
+    Generated paper figures.
+
+environment.yml
+    Conda environment definition.
+
+requirements.txt
+    Pinned Python dependencies, excluding OMpy.
+
+pytest.ini
+    Pytest configuration.
 ```
 
 ## Environment
 
-Create the paper environment from the repository root with
+Create and activate the project environment from the repository root:
 
 ```bash
 conda env create -f environment.yml
-conda activate unfolding-paper
+conda activate empirical-bayes-unfolding
 ```
 
-This installs Python 3.12, pip, git, and the pinned Python dependencies listed
-in `requirements.txt`.
+This installs Python 3.12 and the pinned Python dependencies listed in
+`requirements.txt`.
 
-OMpy is a required external dependency, but the `shapedev` version used for this
-project is installed manually following the OMpy development-branch workflow.
-It is not installed through a one-line pip requirement in `requirements.txt`.
+### OMpy
 
-Install OMpy with
+OMpy is a required external dependency. This project uses the development
+[`shapedev` branch](https://github.com/oslocyclotronlab/ompy/tree/shapedev).
 
-```bash
-mkdir -p ~/software
-cd ~/software
-
-git clone --branch shapedev https://github.com/oslocyclotronlab/ompy.git ompy-shapedev
-cd ompy-shapedev
-
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install -e .
-```
-
-Then fetch the external OMpy response/data cache:
+Follow the installation instructions in the README for that branch. After
+installing OMpy, fetch its external response-data files with
 
 ```bash
 ompy data fetch
 ```
+
+The exact OMpy commit used to produce the archived paper results will be
+recorded in the Zenodo archive.
+
+## CPU and benchmark settings
 
 For CPU-only JAX runs, use
 
@@ -100,7 +104,7 @@ For CPU-only JAX runs, use
 export JAX_PLATFORMS=cpu
 ```
 
-For controlled CPU benchmark runs, also use
+For the controlled CPU benchmark runs reported in the paper, use
 
 ```bash
 export OMP_NUM_THREADS=1
@@ -108,28 +112,34 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export NUMBA_DISABLE_CUDA=1
+export JAX_PLATFORMS=cpu
+export XLA_FLAGS=--xla_force_host_platform_device_count=4
 ```
 
 ## Installation check
 
-After activating the environment and installing OMpy, return to this repository
-and run
+After activating the environment and installing OMpy, run the following
+commands from the repository root:
 
 ```bash
-cd ~/empirical-bayes-unfolding-oslo-method
-
 python -m pip check
 python -m compileall -q -f src tests
+python -m pytest -q
+```
+
+The tests do not rerun the complete paper sampling workflow. They check
+configuration handling, prior construction, response normalization,
+result-array conventions, and smaller model helper functions.
+
+The following commands only display the available command-line options. They
+do not start an unfolding or figure-generation run:
+
+```bash
 python -m src.run_unfolding --help
 python -m src.frequentist.run_rmle_on_synthetic --help
 python -m src.figures.results.cli --help
 python -m src.figures.methods.cli --help
-pytest -q
 ```
-
-The tests do not rerun the full paper posterior sampling. They check the source
-structure, configuration mapping, response normalization, prior construction,
-result-array conventions, and small model helpers.
 
 ## Quickstart posterior example
 
@@ -141,19 +151,20 @@ bash examples/quickstart.sh
 ```
 
 This performs a short PyMC/NUTS posterior run for one synthetic
-`E_x approximately 2.5 MeV` spectrum and writes
+$E_x\approx2.5\,\mathrm{MeV}$ spectrum and writes
 
 ```text
 results/examples/quickstart/posterior_demo/posterior/draws.nc
 figures/examples/quickstart_posterior_2500.pdf
 ```
 
-The quickstart sampler settings are intentionally small. They are meant as a
-smoke test, not as paper-quality posterior sampling.
+The quickstart sampler settings are intentionally small. They are intended as
+a quick test of the installation and execution pipeline, not as paper-quality
+posterior sampling.
 
 ## Running Bayesian unfolding
 
-Bayesian prior and posterior runs are controlled by YAML files in
+Bayesian prior and posterior runs are controlled by YAML files under
 `configs/runs/`.
 
 A single run is executed with
@@ -169,11 +180,17 @@ python -m src.run_unfolding \
   -c configs/runs/paper/high_stat/baseline/posterior.yaml
 ```
 
-A prior-only run is executed in the same way, using a prior-mode config:
+The corresponding prior run is
 
 ```bash
 python -m src.run_unfolding \
   -c configs/runs/paper/high_stat/baseline/prior.yaml
+```
+
+The production configurations used for the article are located under
+
+```text
+configs/runs/paper/
 ```
 
 ## Frequentist RMLE comparison
@@ -195,27 +212,33 @@ python -m src.frequentist.run_rmle_on_synthetic \
   --config configs/runs/paper/low_stat/rmle.yaml
 ```
 
-The high-statistics RMLE configuration uses the sparsity-penalized fit with
-the penalty strength selected by a Wasserstein-1 comparison to the known
-synthetic truth. The low-statistics RMLE configuration uses the unpenalized
-fit.
+The high-statistics RMLE configuration uses a sparsity-penalized fit. Its
+penalty strength is selected by minimizing the Wasserstein-1 distance to the
+known synthetic truth. This truth-based selection is used only for the
+controlled synthetic comparison and is not a prescription for experimental
+data.
+
+The low-statistics RMLE configuration uses the unpenalized fit.
 
 ## Figure generation
 
-Methods figures are generated through
+The methods-figure command-line interface is
 
 ```bash
 python -m src.figures.methods.cli --help
 ```
 
-Result figures are generated through
+The results-figure command-line interface is
 
 ```bash
 python -m src.figures.results.cli --help
 ```
 
-For example, the Bayesian-frequentist comparison figures can be regenerated
-with
+The `--help` commands list the available figure subcommands and arguments
+without generating a figure.
+
+For example, the high-statistics Bayesian–frequentist comparison figure can be
+regenerated with
 
 ```bash
 python -m src.figures.results.cli bayes-frequentist \
@@ -231,7 +254,7 @@ python -m src.figures.results.cli bayes-frequentist \
   --no-show
 ```
 
-and
+The low-statistics comparison figure can be regenerated with
 
 ```bash
 python -m src.figures.results.cli bayes-frequentist \
@@ -249,28 +272,28 @@ python -m src.figures.results.cli bayes-frequentist \
 
 ## Result files
 
-The Bayesian `draws.nc` files are self-contained analysis products. They store
+The Bayesian `draws.nc` files are self-contained analysis products. Depending
+on the run mode, they contain
 
 - emitted-spectrum draws `x`,
 - observed ON and OFF count vectors,
 - synthetic validation truth vectors,
-- prior-reference vectors,
+- Richardson-Lucy and prior-reference vectors,
+- posterior sampling information,
 - and the response operators `D` and `G_g` used in the run.
 
-The response operators are deterministic for a given configuration, but they
-are stored redundantly so that derived quantities can be reconstructed exactly:
+The stored arrays use the OMpy right-hand multiplication convention:
 
 ```python
 eta = x @ G_g
-nu  = x @ D @ G_g
+nu = x @ D @ G_g
 ```
 
-This is intentional. It makes archived result files independent of later
-changes to response-cache handling or response-specialization code.
+The response operators are stored in each result file so that these derived
+quantities can be reconstructed exactly.
 
-Large generated posterior files such as `draws.nc` and full NUTS trace files
-are normally not stored directly in Git. They should be regenerated from the
-configs or archived separately with the final Zenodo release.
+Large `draws.nc` files and the other complete paper outputs are not committed
+to GitHub because of their size. They will be included in the Zenodo archive.
 
 ## Benchmark summary tables
 
@@ -290,27 +313,18 @@ results/benchmarks/benchmark_raw_eta.csv
 results/benchmarks/benchmark_formatted_eta.csv
 ```
 
-The formatted table is intended for direct use in the manuscript appendix.
+The formatted table is used in the paper appendix.
 
 ## Tests
 
-Run the test suite with
+Run all tests with
 
 ```bash
-pytest -q
+python -m pytest -q
 ```
 
-The tests are lightweight. They do not rerun the full paper sampling workflow.
-
-To check source syntax and imports before long reruns, use
-
-```bash
-find src tests -type d -name "__pycache__" -prune -exec rm -rf {} +
-find src tests -name "*.pyc" -delete
-
-python -m compileall -q -f src tests
-pytest -q
-```
+The tests are lightweight and do not rerun the complete paper sampling
+workflow.
 
 ## Reproducing the paper workflow
 
@@ -322,23 +336,19 @@ configs/runs/paper/
 
 The complete workflow is:
 
-1. create and activate the Conda environment,
-2. install OMpy from the `shapedev` branch,
-3. fetch the OMpy data cache with `ompy data fetch`,
-4. run the Bayesian prior and posterior configs,
-5. run the RMLE comparison configs,
-6. regenerate the paper figures,
-7. regenerate the benchmark summary table.
-
-Large generated outputs are not guaranteed to be tracked in Git. The final
-archival release will specify which generated files are included and which
-should be regenerated.
+1. Create and activate the Conda environment.
+2. Install OMpy from the `shapedev` branch.
+3. Fetch the OMpy data files with `ompy data fetch`.
+4. Run the Bayesian prior and posterior configurations.
+5. Run the high- and low-statistics RMLE configurations.
+6. Generate the methods and results figures.
+7. Generate the benchmark summary tables.
 
 ## Citation
 
-A Zenodo DOI will be added after the final versioned release.
-See `CITATION.cff`.
+Citation metadata are provided in `CITATION.cff`. 
 
 ## License
 
-See `LICENSE`.
+The source code is distributed under the GNU General Public License v3.0.
+See `LICENSE` for details.

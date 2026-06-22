@@ -1,4 +1,4 @@
-name: unfolding-paper
+name: empirical-bayes-unfolding
 channels:
   - conda-forge
 dependencies:

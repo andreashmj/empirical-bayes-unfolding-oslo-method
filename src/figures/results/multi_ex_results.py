@@ -232,7 +232,7 @@ def scaled_deviation_y_limits_for_panel(
     all_values = np.concatenate(finite_values)
 
     lower = min(np.min(all_values).item(), -float(minimum_abs), 0.0)
-    upper = max(np.max(all_values).item(), float(minimum_abs), 0.0)
+    upper = 1.18 * max(np.max(all_values).item(), float(minimum_abs), 0.0)
 
     span = upper - lower
 

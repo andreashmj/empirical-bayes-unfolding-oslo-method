@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the archived software release."
+title: "Empirical-Bayes unfolding of gamma-ray spectra"
+type: software
+version: 1.0.0
+authors:
+  - family-names: "Mjøs"
+    given-names: "Andreas H."
+repository-code: "https://github.com/andreashmj/empirical-bayes-unfolding-oslo-method"
+license: "GPL-3.0-only"
+keywords:
+  - Bayesian unfolding
+  - empirical Bayes
+  - gamma-ray spectroscopy
+  - Oslo method
+  - inverse problems
+  - PyMC

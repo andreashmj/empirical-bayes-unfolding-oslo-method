@@ -1,11 +1,7 @@
 """
 Run the paper RMLE comparison on synthetic one-dimensional Ex slices.
-
-The frequentist comparison is intentionally narrow. It runs the OMpy RMLE
-implementation with the configured response, ON/OFF background input, and
-bootstrap confidence bands. The only optional regularization used for the paper
-comparison is the sparsity penalty with W1 selection of the penalty strength;
-otherwise the standard unpenalized RMLE loss is used.
+The OMpy RMLE implementation is run with the configured response, ON/OFF background input, and bootstrap confidence bands. The only optional regularization used for the paper comparison is the sparsity penalty with W1 selection of the penalty strength.
+Otherwise the standard unpenalized RMLE loss is used.
 """
 
 from __future__ import annotations
