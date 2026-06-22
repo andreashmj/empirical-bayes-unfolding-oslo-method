@@ -20,8 +20,8 @@ The repository contains code and configuration files for
 
 The GitHub repository contains the source code, configuration files, tests,
 examples, and other lightweight reproducibility material. The complete
-generated result files are too large for normal Git version control and will
-therefore be distributed through the associated Zenodo archive.
+generated result files are too large for normal Git version control and are
+therefore distributed through the associated Zenodo archive.
 
 ## Repository structure
 
@@ -67,6 +67,16 @@ requirements.txt
 
 pytest.ini
     Pytest configuration.
+    
+reproducibility/
+    OMPY_VERSION.txt              Recorded OMpy commit and patch information
+    ompy-local-changes.patch      Local OMpy compatibility changes
+
+CITATION.cff
+    Citation metadata.
+
+LICENSE.md
+    GNU General Public License v3.0 text.
 ```
 
 ## Environment
@@ -86,15 +96,53 @@ This installs Python 3.12 and the pinned Python dependencies listed in
 OMpy is a required external dependency. This project uses the development
 [`shapedev` branch](https://github.com/oslocyclotronlab/ompy/tree/shapedev).
 
-Follow the installation instructions in the README for that branch. After
-installing OMpy, fetch its external response-data files with
+The paper results were generated from OMpy commit
+
+```text
+a2a55c124442c84a7015e70534a6637f7df69c41
+```
+
+together with the compatibility patch stored at
+
+```text
+reproducibility/ompy-local-changes.patch
+```
+
+From the root of this repository, install the recorded OMpy version with
+
+```bash
+PROJECT_ROOT="$(pwd)"
+OMPY_DIR="../ompy-paper"
+
+test ! -e "$OMPY_DIR" || {
+  echo "$OMPY_DIR already exists; remove it or choose another directory."
+  exit 1
+}
+
+git clone --branch shapedev --single-branch \
+  https://github.com/oslocyclotronlab/ompy.git \
+  "$OMPY_DIR"
+
+git -C "$OMPY_DIR" checkout --detach \
+  a2a55c124442c84a7015e70534a6637f7df69c41
+
+git -C "$OMPY_DIR" apply --check --whitespace=nowarn \
+  "$PROJECT_ROOT/reproducibility/ompy-local-changes.patch"
+
+git -C "$OMPY_DIR" apply --whitespace=nowarn \
+  "$PROJECT_ROOT/reproducibility/ompy-local-changes.patch"
+
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -e "$OMPY_DIR"
+```
+
+Fetch the external OMpy response-data files with
 
 ```bash
 ompy data fetch
 ```
 
-The exact OMpy commit used to produce the archived paper results will be
-recorded in the Zenodo archive.
+The installation directory is arbitrary; `../ompy-paper` is only an example.
 
 ## CPU and benchmark settings
 
@@ -127,6 +175,19 @@ python -m compileall -q -f src tests
 python -m pytest -q
 ```
 
+Verify that the patched OMpy modules are available:
+
+```bash
+python - <<'PY'
+import ompy
+from ompy.numbalib import njit, prange
+from ompy.unfolding.resampling.confidence import make_ci
+
+print("OMpy:", ompy.__file__)
+print("OMpy compatibility patch imports passed.")
+PY
+```
+
 The tests do not rerun the complete paper sampling workflow. They check
 configuration handling, prior construction, response normalization,
 result-array conventions, and smaller model helper functions.
@@ -155,7 +216,7 @@ $E_x\approx2.5\,\mathrm{MeV}$ spectrum and writes
 
 ```text
 results/examples/quickstart/posterior_demo/posterior/draws.nc
-figures/examples/quickstart_posterior_2500.pdf
+figures/examples/quickstart_posterior_Ex2500.pdf
 ```
 
 The quickstart sampler settings are intentionally small. They are intended as
@@ -350,7 +411,7 @@ The fixed code-and-results archive for version 1.0.0 is available on Zenodo:
 
 > Andreas Halkjelsvik Mjøs, *Empirical-Bayes unfolding of γ-ray spectra:
 > code and results*, version 1.0.0, Zenodo.  
-> DOI: 10.5281/zenodo.20797045
+> DOI: [10.5281/zenodo.20797045](https://doi.org/10.5281/zenodo.20797045)
 
 Machine-readable citation metadata are provided in `CITATION.cff`.
 
@@ -358,9 +419,12 @@ The citation for the associated article will be added after publication.
 
 ## License
 
-The source code and configuration scripts are distributed under the GNU
-General Public License v3.0 or later. See `LICENSE` for details.
+Copyright © 2026 Andreas Halkjelsvik Mjøs.
 
-The generated synthetic data, result files, benchmark tables, and figures in
-the Zenodo archive are distributed under the Creative Commons Attribution 4.0
-International license.
+The source code, configuration files, generated synthetic data, result files,
+benchmark tables, and figures distributed with this project are licensed under
+the GNU General Public License, either version 3 of the License or, at your
+option, any later version. See `LICENSE.md` for the complete license text.
+
+Third-party software and data retain their original licenses.
+

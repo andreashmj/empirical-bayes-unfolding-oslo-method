@@ -37,6 +37,47 @@ index 5153230..8f1ad2a 100644
  
      with np.load(path, allow_pickle=False, **kwargs) as data:
          version = decode_string(data["version"])
+diff --git a/src/ompy/numbalib.py b/src/ompy/numbalib.py
+new file mode 100644
+index 0000000..39b0508
+--- /dev/null
++++ b/src/ompy/numbalib.py
+@@ -0,0 +1,35 @@
++"""
++Lightweight wrapper around numba for OMpy.
++
++Some OMpy modules do: `from ompy.numbalib import njit`
++but the file may be missing in some checkouts/installs.
++This provides:
++  - njit
++  - prange (optional)
++and falls back to pure-Python if numba isn't installed.
++"""
++
++from __future__ import annotations
++
++from typing import Any, Callable
++
++try:
++    from numba import njit as _njit  # type: ignore
++    from numba import prange as _prange  # type: ignore
++
++    njit = _njit
++    prange = _prange
++
++except Exception:
++    def njit(*args: Any, **kwargs: Any) -> Callable:
++        # Supports both @njit and @njit(...)
++        if args and callable(args[0]) and len(args) == 1 and not kwargs:
++            return args[0]
++
++        def decorator(fn: Callable) -> Callable:
++            return fn
++
++        return decorator
++
++    def prange(*args: Any, **kwargs: Any):
++        return range(*args)
 diff --git a/src/ompy/stubs.py b/src/ompy/stubs.py
 index c41d07e..6f2052e 100644
 --- a/src/ompy/stubs.py

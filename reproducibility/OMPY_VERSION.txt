@@ -1,3 +1,7 @@
-Repository: https://github.com/oslocyclotronlab/ompy
-Branch: shapedev
-Commit: a2a55c124442c84a7015e70534a6637f7df69c41
+Upstream repository: https://github.com/oslocyclotronlab/ompy
+Upstream branch: shapedev
+Upstream base commit: a2a55c124442c84a7015e70534a6637f7df69c41
+Local compatibility patch: reproducibility/ompy-local-changes.patch
+
+The local patch contains the packaging, file-loading, NumPy/JAX compatibility,
+and RMLE/bootstrap compatibility changes used to produce the archived results.
