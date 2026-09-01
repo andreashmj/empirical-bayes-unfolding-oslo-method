@@ -129,9 +129,9 @@ The figures are saved to `figures/`.
 
 ## Result files
 
-The results are stored in `draws.nc` files. These main output is the posterior draws of the emitted spectrum. The files also include the observed spectra, truth vectors for synthetic runs, and the response matrices used in the run.
+The results are stored in `draws.nc` files. The main output is the posterior draws of the emitted spectrum. The files also include the observed spectra, truth vectors for synthetic runs, and the response matrices used in the run.
 
-The code uses the right-handed convention for applying the response operators
+The code uses the right-hand convention for applying the response operators
 
 ```python
 eta = x @ G_g
