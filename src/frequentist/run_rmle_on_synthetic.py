@@ -1,19 +1,18 @@
 """
-Run the paper RMLE comparison on synthetic one-dimensional Ex slices.
-The OMpy RMLE implementation is run with the configured response, ON/OFF background input, and bootstrap confidence bands. The only optional regularization used for the paper comparison is the sparsity penalty with W1 selection of the penalty strength.
-Otherwise the standard unpenalized RMLE loss is used.
+Run the OMpy RMLE method on the same synthetic Ex bins used for the Bayesian runs.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Sequence
 
 import numpy as np
+import ompy as om
+import ompy.response
 
 from ..config_utils import load_run_config
 from ..paths import repo_path
@@ -26,22 +25,16 @@ DEFAULT_SPARSITY_SMOOTHING = 100.0
 
 
 def ensure_dir(path: str | Path) -> Path:
-    """Create a directory if needed and return it as a Path."""
-
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def config_value(config: dict, key: str, default):
-    """Return a configuration value or a default."""
-
     return config[key] if key in config else default
 
 
 def vector_values(vector: Any) -> np.ndarray:
-    """Return numeric values from an OMpy object or array-like value."""
-
     if hasattr(vector, "values"):
         return np.asarray(vector.values, dtype=float)
 
@@ -49,8 +42,6 @@ def vector_values(vector: Any) -> np.ndarray:
 
 
 def maybe_float32(values: Any) -> Any:
-    """Cast OMpy arrays to float32 when the object supports it."""
-
     if hasattr(values, "astype"):
         try:
             return values.astype("float32")
@@ -62,13 +53,6 @@ def maybe_float32(values: Any) -> Any:
 
 @contextmanager
 def numpy_random_seed(seed: int | None):
-    """Temporarily seed NumPy's legacy RNG around OMpy bootstrap resampling.
-
-    OMpy's RMLE bootstrap path uses 'np.random' internally and does not expose
-    a seed argument at the public resampling call. The wrapper therefore seeds
-    NumPy around the resampling call and restores the previous state afterwards.
-    """
-
     if seed is None:
         yield
         return
@@ -82,8 +66,6 @@ def numpy_random_seed(seed: int | None):
 
 
 def parse_ex_values(config: dict, cli_ex: list[float] | None) -> list[float]:
-    """Return requested excitation-energy slices from CLI or run config."""
-
     if cli_ex:
         return [float(value) for value in cli_ex]
 
@@ -96,16 +78,16 @@ def parse_ex_values(config: dict, cli_ex: list[float] | None) -> list[float]:
     if "ex_start_energy" in config and "ex_end_energy" in config:
         start = float(config["ex_start_energy"])
         stop = float(config["ex_end_energy"])
+
         if start > stop:
             raise ValueError("ex_start_energy must be <= ex_end_energy.")
+
         return [start, stop]
 
     return [4000.0]
 
 
 def build_synthetic_loader(config: dict) -> SyntheticDataLoader:
-    """Build the synthetic-data loader from the run configuration."""
-
     return SyntheticDataLoader(
         mat_path=config["mat_path"],
         response_db=config_value(config, "response_db", "OSCAR2020"),
@@ -124,8 +106,6 @@ def build_synthetic_loader(config: dict) -> SyntheticDataLoader:
 
 
 def unfolding_response(config: dict, loader: SyntheticDataLoader):
-    """Return the detector response used for the RMLE unfolding."""
-
     sigma_eg_unfold = str(
         config_value(config, "sigma_eg_unfold", loader.resp_norm_sigma)
     )
@@ -133,17 +113,10 @@ def unfolding_response(config: dict, loader: SyntheticDataLoader):
     if sigma_eg_unfold == str(loader.resp_norm_sigma):
         return loader.resp
 
-    import ompy as om
-
-    return (
-        om.response.Response.from_db(str(config_value(config, "response_db", "OSCAR2020")))
-        .normalize_sigma(loader.resp_norm_anchor, sigma_eg_unfold)
-    )
+    return ( om.response.Response.from_db(str(config_value(config, "response_db", "OSCAR2020"))).normalize_sigma(loader.resp_norm_anchor, sigma_eg_unfold))
 
 
 def import_ompy_rmle():
-    """Import the OMpy RMLE classes used in the paper comparison."""
-
     try:
         from ompy.unfolding.rmle import RMLE
     except Exception:
@@ -158,8 +131,6 @@ def import_ompy_rmle():
 
 
 def resolve_ex_index(loader: SyntheticDataLoader, ex_keV: float) -> int:
-    """Return the nearest loader row index for one requested Ex value."""
-
     try:
         return int(loader.n.index_X(ex_keV))
     except Exception:
@@ -172,8 +143,6 @@ def prepare_ex_slice(
     response_unfold: Any,
     ex_keV: float,
 ) -> dict:
-    """Prepare one active excitation-energy slice for OMpy RMLE."""
-
     ex_index = resolve_ex_index(loader, ex_keV)
     ex_axis = np.asarray(loader.Ex, dtype=float)
     ex_actual = float(ex_axis[ex_index])
@@ -187,9 +156,7 @@ def prepare_ex_slice(
     if loader.n_off is None:
         background_observed = np.zeros(n_bins, dtype=float)
     else:
-        background_observed = vector_values(
-            loader.n_off.iloc[ex_index, active_eg_slice]
-        )
+        background_observed = vector_values( loader.n_off.iloc[ex_index, active_eg_slice] )
 
     if loader.background_expected is None:
         background_expected = np.zeros(n_bins, dtype=float)
@@ -205,7 +172,6 @@ def prepare_ex_slice(
     response_matrix = D_values @ G_values
 
     return {
-        "ex_index": ex_index,
         "ex_actual": ex_actual,
         "active_eg_length": n_bins,
         "n_vec": maybe_float32(n_cut),
@@ -221,8 +187,6 @@ def prepare_ex_slice(
 
 
 def normalised_w1(x: np.ndarray, y: np.ndarray, grid: np.ndarray) -> float:
-    """Return discrete W1 distance after normalizing two non-negative spectra."""
-
     x = np.clip(np.asarray(x, dtype=float), 0.0, None)
     y = np.clip(np.asarray(y, dtype=float), 0.0, None)
     grid = np.asarray(grid, dtype=float)
@@ -246,6 +210,7 @@ def normalised_w1(x: np.ndarray, y: np.ndarray, grid: np.ndarray) -> float:
 
     spacing = np.diff(grid)
     spacing = np.where(np.isfinite(spacing), spacing, 0.0)
+
     return float(np.sum(np.abs(x_cdf[:-1] - y_cdf[:-1]) * spacing))
 
 
@@ -257,8 +222,6 @@ def build_loss_model(
     sparsity_threshold: float,
     sparsity_smoothing: float,
 ):
-    """Build the OMpy loss model for the paper RMLE comparison."""
-
     penalty = str(penalty).strip().lower()
 
     if penalty == "none":
@@ -276,9 +239,9 @@ def build_loss_model(
         smoothing=float(sparsity_smoothing),
         target="mu_normalized",
     )
+
     return ModelLoss(penalty=penalty_term), {
         "penalty": "sparsity",
-        "alpha_selection": "w1",
         "sparsity_alpha": float(sparsity_alpha),
         "sparsity_threshold": float(sparsity_threshold),
         "sparsity_smoothing": float(sparsity_smoothing),
@@ -301,8 +264,6 @@ def run_rmle_fit(
     sparsity_threshold: float,
     sparsity_smoothing: float,
 ) -> dict:
-    """Run one OMpy RMLE fit."""
-
     if include_background:
         background_model = BackgroundModel(
             backgrounds=(prepared["background_observed"],),
@@ -311,7 +272,7 @@ def run_rmle_fit(
     else:
         background_model = BackgroundModel(backgrounds=(), do_fold=False)
 
-    loss_model, loss_meta = build_loss_model(
+    loss_model, loss_info = build_loss_model(
         ModelLoss=ModelLoss,
         Sparsity=Sparsity,
         penalty=penalty,
@@ -330,20 +291,12 @@ def run_rmle_fit(
         loss=loss_model,
     )
 
-    beta_hat = None
-    if hasattr(result, "best_beta"):
-        beta = result.best_beta()
-        if beta is not None:
-            beta_hat = vector_values(beta)
-
     return {
         "result": result,
         "mu_hat": vector_values(result.best()),
         "eta_hat": vector_values(result.best_eta()),
         "nu_hat": vector_values(result.best_folded()),
-        "total_hat": vector_values(result.folded_total()),
-        "beta_hat": beta_hat,
-        "loss_meta": loss_meta,
+        "loss_info": loss_info,
     }
 
 
@@ -361,8 +314,6 @@ def select_sparsity_alpha_by_w1(
     sparsity_threshold: float,
     sparsity_smoothing: float,
 ) -> tuple[float, list[dict[str, float]]]:
-    """Select sparsity alpha by W1 distance to the synthetic eta truth."""
-
     scores: list[dict[str, float]] = []
 
     for alpha in alpha_grid:
@@ -393,13 +344,14 @@ def select_sparsity_alpha_by_w1(
 
 
 def ci_center(box: np.ndarray, summary: str) -> np.ndarray:
-    """Return the bootstrap center curve."""
-
     summary = str(summary).strip().lower()
+
     if summary == "mean":
         return np.mean(box, axis=0)
+
     if summary == "median":
         return np.median(box, axis=0)
+
     raise ValueError("freq_ci_summary must be 'mean' or 'median'.")
 
 
@@ -411,8 +363,6 @@ def make_confidence_interval(
     summary: str,
     make_ci: Any,
 ):
-    """Return center, lower, upper, and effective confidence-band method."""
-
     center = ci_center(box, summary)
 
     try:
@@ -422,7 +372,12 @@ def make_confidence_interval(
             alpha=float(alpha),
             method=method,
         )
-        return center, np.asarray(lower, dtype=float), np.asarray(upper, dtype=float), method
+        return (
+            center,
+            np.asarray(lower, dtype=float),
+            np.asarray(upper, dtype=float),
+            method,
+        )
     except Exception as error:
         fallback = "standard"
         print(
@@ -430,44 +385,76 @@ def make_confidence_interval(
             f"({type(error).__name__}: {error}). Falling back to {fallback!r}.",
             file=sys.stderr,
         )
+
         lower, upper = make_ci(
             box,
             original=original,
             alpha=float(alpha),
             method=fallback,
         )
-        return center, np.asarray(lower, dtype=float), np.asarray(upper, dtype=float), fallback
+        return (
+            center,
+            np.asarray(lower, dtype=float),
+            np.asarray(upper, dtype=float),
+            fallback,
+        )
 
 
-def maybe_expand_beta_box(beta_box: np.ndarray, n_bins: int) -> np.ndarray:
-    """Broadcast bootstrap background beta to sample-by-Eg shape."""
-
-    beta_box = np.asarray(beta_box, dtype=float)
-
-    if beta_box.ndim == 1:
-        return beta_box[:, None] + np.zeros((beta_box.shape[0], n_bins), dtype=float)
-
-    if beta_box.ndim == 2:
-        if beta_box.shape[1] == n_bins:
-            return beta_box
-        if beta_box.shape[0] == n_bins:
-            return beta_box.T
-
-    raise ValueError(f"Could not broadcast beta_box with shape {beta_box.shape}.")
-
-
-def add_ci_payload(
-    payload: dict,
+def add_ci_arrays(
+    arrays: dict[str, np.ndarray],
     key: str,
     center: np.ndarray,
     lower: np.ndarray,
     upper: np.ndarray,
 ) -> None:
-    """Store confidence-band arrays under stable output names."""
+    arrays[f"ci_{key}_center"] = np.asarray(center, dtype=float)
+    arrays[f"ci_{key}_lo"] = np.asarray(lower, dtype=float)
+    arrays[f"ci_{key}_hi"] = np.asarray(upper, dtype=float)
 
-    payload[f"ci_{key}_center"] = np.asarray(center, dtype=float)
-    payload[f"ci_{key}_lo"] = np.asarray(lower, dtype=float)
-    payload[f"ci_{key}_hi"] = np.asarray(upper, dtype=float)
+
+def bootstrap_summary(
+    result: Any,
+    run: dict,
+    bootstrap: int,
+    bootstrap_seed: int | None,
+    alpha: float,
+    ci_method: str,
+    ci_summary: str,
+    make_ci: Any,
+) -> tuple[dict[str, np.ndarray] | None, str]:
+    if bootstrap <= 0:
+        return None, ci_method
+
+    with numpy_random_seed(bootstrap_seed):
+        bootstraps = result.resample(int(bootstrap))
+
+    boxes = {
+        "mu": np.asarray(bootstraps.ubox, dtype=float),
+        "eta": np.asarray(bootstraps.etabox, dtype=float),
+        "nu": np.asarray(bootstraps.nubox, dtype=float),
+    }
+
+    originals = {
+        "mu": run["mu_hat"],
+        "eta": run["eta_hat"],
+        "nu": run["nu_hat"],
+    }
+
+    ci_arrays: dict[str, np.ndarray] = {}
+    effective_method = ci_method
+
+    for key, box in boxes.items():
+        center, lower, upper, effective_method = make_confidence_interval(
+            box=box,
+            original=originals[key],
+            alpha=alpha,
+            method=effective_method,
+            summary=ci_summary,
+            make_ci=make_ci,
+        )
+        add_ci_arrays(ci_arrays, key, center, lower, upper)
+
+    return ci_arrays, effective_method
 
 
 def save_slice_summary(
@@ -480,33 +467,13 @@ def save_slice_summary(
     mu_hat: np.ndarray,
     eta_hat: np.ndarray,
     nu_hat: np.ndarray,
-    total_hat: np.ndarray,
-    beta_hat: np.ndarray | None,
     truth: dict[str, np.ndarray],
-    bootstrap_boxes: dict[str, np.ndarray] | None,
-    ci_payload: dict[str, np.ndarray] | None,
-    meta_extra: dict[str, Any],
+    ci_arrays: dict[str, np.ndarray] | None,
+    run_info: dict[str, Any],
 ) -> None:
-    """Save one excitation-energy summary as npz, csv, and metadata json."""
-
-    import pandas as pd
-
     out_dir = ensure_dir(out_dir)
 
-    meta = {
-        "ex_keV": float(ex_keV),
-        "n_bins": int(len(eg_keV)),
-        "has_beta": beta_hat is not None,
-        "has_truth": True,
-        "has_bootstrap": bootstrap_boxes is not None,
-        "has_ci": ci_payload is not None,
-        "files": {"npz": "summary.npz", "csv": "data.csv"},
-    }
-    meta.update(meta_extra)
-
-    (out_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-
-    payload = {
+    arrays = {
         "ex_keV": float(ex_keV),
         "Eg_keV": np.asarray(eg_keV, dtype=float),
         "raw": np.asarray(raw, dtype=float),
@@ -515,123 +482,20 @@ def save_slice_summary(
         "mu_hat": np.asarray(mu_hat, dtype=float),
         "eta_hat": np.asarray(eta_hat, dtype=float),
         "nu_hat": np.asarray(nu_hat, dtype=float),
-        "total_hat": np.asarray(total_hat, dtype=float),
     }
 
-    if beta_hat is not None:
-        payload["beta_hat"] = np.asarray(beta_hat, dtype=float)
-
     for key, values in truth.items():
-        payload[f"truth_{key}"] = np.asarray(values, dtype=float)
+        arrays[f"truth_{key}"] = np.asarray(values, dtype=float)
 
-    if bootstrap_boxes is not None:
-        for key, values in bootstrap_boxes.items():
-            payload[f"boot_{key}_box"] = np.asarray(values, dtype=float)
+    if ci_arrays is not None:
+        arrays.update(ci_arrays)
 
-    if ci_payload is not None:
-        for key, values in ci_payload.items():
-            payload[key] = np.asarray(values, dtype=float)
+    for key, value in run_info.items():
+        if value is None:
+            continue
+        arrays[key] = np.asarray(value)
 
-    np.savez(out_dir / "summary.npz", **payload)
-
-    table = pd.DataFrame(
-        {
-            "Eg_keV": np.asarray(eg_keV, dtype=float),
-            "raw": np.asarray(raw, dtype=float),
-            "bg_off": np.asarray(background_observed, dtype=float),
-            "bg_exp": np.asarray(background_expected, dtype=float),
-            "mu_hat": np.asarray(mu_hat, dtype=float),
-            "eta_hat": np.asarray(eta_hat, dtype=float),
-            "nu_hat": np.asarray(nu_hat, dtype=float),
-            "total_hat": np.asarray(total_hat, dtype=float),
-        }
-    )
-
-    if beta_hat is not None and np.asarray(beta_hat).shape == table["Eg_keV"].shape:
-        table["beta_hat"] = np.asarray(beta_hat, dtype=float)
-
-    for key, values in truth.items():
-        values = np.asarray(values, dtype=float)
-        if values.shape == table["Eg_keV"].shape:
-            table[f"truth_{key}"] = values
-
-    if ci_payload is not None:
-        for key, values in ci_payload.items():
-            values = np.asarray(values, dtype=float)
-            if values.shape == table["Eg_keV"].shape:
-                table[key] = values
-
-    table.to_csv(out_dir / "data.csv", index=False)
-
-
-def bootstrap_summary(
-    result: Any,
-    run: dict,
-    bootstrap: int,
-    bootstrap_seed: int | None,
-    alpha: float,
-    ci_method: str,
-    ci_summary: str,
-    make_ci: Any,
-) -> tuple[dict[str, np.ndarray] | None, dict[str, np.ndarray] | None, str]:
-    """Build bootstrap boxes and confidence bands when requested."""
-
-    if bootstrap <= 0:
-        return None, None, ci_method
-
-    with numpy_random_seed(bootstrap_seed):
-        bootstraps = result.resample(int(bootstrap))
-
-    mu_box = np.asarray(bootstraps.ubox, dtype=float)
-    eta_box = np.asarray(bootstraps.etabox, dtype=float)
-    nu_box = np.asarray(bootstraps.nubox, dtype=float)
-
-    boxes: dict[str, np.ndarray] = {
-        "mu": mu_box,
-        "eta": eta_box,
-        "nu": nu_box,
-    }
-
-    beta_box = getattr(bootstraps, "betabox", None)
-    if beta_box is not None:
-        try:
-            boxes["total"] = nu_box + maybe_expand_beta_box(
-                np.asarray(beta_box, dtype=float),
-                n_bins=nu_box.shape[1],
-            )
-        except Exception:
-            pass
-
-    ci_payload: dict[str, np.ndarray] = {}
-    effective_method = ci_method
-
-    for key, box, original in [
-        ("mu", mu_box, run["mu_hat"]),
-        ("eta", eta_box, run["eta_hat"]),
-        ("nu", nu_box, run["nu_hat"]),
-    ]:
-        center, lower, upper, effective_method = make_confidence_interval(
-            box=box,
-            original=original,
-            alpha=alpha,
-            method=effective_method,
-            summary=ci_summary,
-            make_ci=make_ci,
-        )
-        add_ci_payload(ci_payload, key, center, lower, upper)
-
-    if "total" in boxes:
-        center, lower, upper, effective_method = make_confidence_interval(
-            box=boxes["total"],
-            original=run["total_hat"],
-            alpha=alpha,
-            method=effective_method,
-            summary=ci_summary,
-            make_ci=make_ci,
-        )
-        add_ci_payload(ci_payload, "total", center, lower, upper)
-
-    return boxes, ci_payload, effective_method
+    np.savez(out_dir / "summary.npz", **arrays)
 
 
 def run_one_ex(
@@ -654,8 +518,6 @@ def run_one_ex(
     sparsity_threshold: float,
     sparsity_smoothing: float,
 ) -> None:
-    """Run OMpy RMLE and save output for one excitation-energy row."""
-
     RMLE, BackgroundModel, ModelLoss, Sparsity, make_ci = import_ompy_rmle()
 
     prepared = prepare_ex_slice(
@@ -663,7 +525,6 @@ def run_one_ex(
         response_unfold=response_unfold,
         ex_keV=ex_keV,
     )
-
     include_background = bool(config_value(config, "include_background", True))
 
     print(
@@ -672,18 +533,19 @@ def run_one_ex(
         f"N_bins={prepared['active_eg_length']}"
     )
     print(f"[RMLE] iterations={iterations} | bootstrap={bootstrap}")
-    print(f"[RMLE] background={'on' if include_background else 'off'} | background.do_fold=False")
-    print(f"[RMLE] ci_method={ci_method!r} | ci_alpha={ci_alpha} | ci_summary={ci_summary}")
+    print(f"[RMLE] background={'on' if include_background else 'off'}")
+    print(f"[RMLE] ci_method={ci_method!r} | ci_alpha={ci_alpha}")
     print(f"[RMLE] mask={mask!r} | initial={initial!r}")
 
     selected_alpha = None
     alpha_scores: list[dict[str, float]] = []
 
     if penalty == "none":
-        print("[RMLE] loss=ModelLoss() without additional penalty")
+        print("[RMLE] loss without additional penalty")
+
     elif penalty == "sparsity":
         if alpha_selection != "w1":
-            raise ValueError("freq_alpha_selection must be 'w1' when freq_penalty='sparsity'.")
+            raise ValueError("freq_alpha_selection must be 'w1'.")
 
         selected_alpha, alpha_scores = select_sparsity_alpha_by_w1(
             RMLE=RMLE,
@@ -699,13 +561,11 @@ def run_one_ex(
             sparsity_threshold=sparsity_threshold,
             sparsity_smoothing=sparsity_smoothing,
         )
-        print(
-            f"[RMLE] loss=ModelLoss(Sparsity) | alpha_selection=w1 | "
-            f"selected_alpha={selected_alpha:g}"
-        )
-        print("[RMLE] alpha sweep eta-space W1:")
+
+        print(f"[RMLE] sparsity alpha selected by W1: {selected_alpha:g}")
         for row in alpha_scores:
-            print(f"         alpha={row['alpha']:<8g} W1={row['w1_eta']:.6g}")
+            print(f"       alpha={row['alpha']:<8g} W1={row['w1_eta']:.6g}")
+
     else:
         raise ValueError("freq_penalty must be either 'none' or 'sparsity'.")
 
@@ -725,7 +585,7 @@ def run_one_ex(
         sparsity_smoothing=sparsity_smoothing,
     )
 
-    boxes, ci_payload, effective_ci_method = bootstrap_summary(
+    ci_arrays, effective_ci_method = bootstrap_summary(
         result=run["result"],
         run=run,
         bootstrap=bootstrap,
@@ -736,22 +596,15 @@ def run_one_ex(
         make_ci=make_ci,
     )
 
-    meta_extra = {
-        **run["loss_meta"],
-        "alpha_scores": alpha_scores,
+    run_info = {
         "iterations": int(iterations),
         "bootstrap": int(bootstrap),
-        "bootstrap_seed": None if bootstrap_seed is None else int(bootstrap_seed),
-        "bootstrap_seed_strategy": "numpy_random_seed_around_result_resample",
-        "ci_method_requested": ci_method,
-        "ci_method_effective": effective_ci_method,
-        "ci_summary": ci_summary,
+        "bootstrap_seed": -1 if bootstrap_seed is None else int(bootstrap_seed),
         "ci_alpha": float(ci_alpha),
-        "mask": str(mask),
-        "initial": str(initial),
-        "include_background": include_background,
-        "background_do_fold": False,
+        "ci_method_effective": effective_ci_method,
+        "selected_sparsity_alpha": selected_alpha,
     }
+    run_info.update(run["loss_info"])
 
     ex_dir = ensure_dir(out_root / f"Ex{round(ex_keV)}")
 
@@ -765,39 +618,32 @@ def run_one_ex(
         mu_hat=run["mu_hat"],
         eta_hat=run["eta_hat"],
         nu_hat=run["nu_hat"],
-        total_hat=run["total_hat"],
-        beta_hat=run["beta_hat"],
         truth={
             "mu": prepared["x_true"],
             "eta": prepared["eta_true"],
             "nu": prepared["nu_true"],
         },
-        bootstrap_boxes=boxes,
-        ci_payload=ci_payload,
-        meta_extra=meta_extra,
+        ci_arrays=ci_arrays,
+        run_info=run_info,
     )
 
-    print(f"[OK] Ex={round(ex_keV)} keV -> {ex_dir}")
+    print(f"[OK] Ex={round(ex_keV)} keV -> {ex_dir / 'summary.npz'}")
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the command-line parser for the RMLE paper comparison."""
-
     parser = argparse.ArgumentParser(
-        description="Run the OMpy RMLE paper comparison on synthetic Ex slices."
+        description="Run OMpy RMLE on synthetic Ex slices."
     )
     parser.add_argument("--config", required=True, help="Path to YAML run config.")
-    parser.add_argument("--output-dir", default=None, help="Override output_dir from config.")
-    parser.add_argument("--ex", nargs="*", type=float, default=None, help="Ex slices in keV.")
-    parser.add_argument("--iterations", type=int, default=None, help="Override freq_iterations.")
-    parser.add_argument("--bootstrap", type=int, default=None, help="Override freq_bootstrap.")
-    parser.add_argument("--bootstrap-seed", type=int, default=None, help="Override freq_bootstrap_seed.")
+    parser.add_argument("--output-dir", default=None, help="Override output_dir.")
+    parser.add_argument("--ex", nargs="*", type=float, default=None, help="Ex values in keV.")
+    parser.add_argument("--iterations", type=int, default=None)
+    parser.add_argument("--bootstrap", type=int, default=None)
+    parser.add_argument("--bootstrap-seed", type=int, default=None)
     return parser
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Run the frequentist comparison pipeline."""
-
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -837,53 +683,21 @@ def main(argv: list[str] | None = None) -> None:
     if penalty == "none":
         alpha_selection = "none"
     elif alpha_selection != "w1":
-        raise ValueError("Only W1 alpha selection is supported for freq_penalty='sparsity'.")
+        raise ValueError("Only W1 alpha selection is supported for sparsity.")
 
     alpha_grid = [
         float(value)
-        for value in config_value(config, "freq_sparsity_alpha_grid", DEFAULT_SPARSITY_ALPHA_GRID)
+        for value in config_value(
+            config,
+            "freq_sparsity_alpha_grid",
+            DEFAULT_SPARSITY_ALPHA_GRID,
+        )
     ]
     sparsity_threshold = float(
         config_value(config, "freq_sparsity_threshold", DEFAULT_SPARSITY_THRESHOLD)
     )
     sparsity_smoothing = float(
         config_value(config, "freq_sparsity_smoothing", DEFAULT_SPARSITY_SMOOTHING)
-    )
-
-    provenance = {
-        "config_path": str(repo_path(args.config)),
-        "output_root": str(out_root),
-        "dataset_id": dataset_id,
-        "rng_seed": int(config_value(config, "rng_seed", 100)),
-        "rebin_factors": config_value(config, "rebin_factors", None),
-        "mat_scale": float(config_value(config, "mat_scale", 1.0)),
-        "include_background": bool(config_value(config, "include_background", True)),
-        "sigma_eg_gen": config_value(config, "sigma_eg_gen", "30keV"),
-        "sigma_eg_unfold": config_value(
-            config,
-            "sigma_eg_unfold",
-            config_value(config, "sigma_eg_gen", "30keV"),
-        ),
-        "include_ex_smearing": bool(config_value(config, "include_ex_smearing", False)),
-        "background_do_fold": False,
-        "penalty": penalty,
-        "alpha_selection": alpha_selection,
-        "sparsity_alpha_grid": alpha_grid if penalty == "sparsity" else None,
-        "sparsity_threshold": sparsity_threshold if penalty == "sparsity" else None,
-        "sparsity_smoothing": sparsity_smoothing if penalty == "sparsity" else None,
-        "sparsity_target": "mu_normalized" if penalty == "sparsity" else None,
-        "iterations": iterations,
-        "bootstrap": bootstrap,
-        "bootstrap_seed": bootstrap_seed,
-        "ci_method": ci_method,
-        "ci_summary": ci_summary,
-        "ci_alpha": ci_alpha,
-        "mask": str(mask),
-        "initial": str(initial),
-    }
-    (out_root / "provenance.json").write_text(
-        json.dumps(provenance, indent=2),
-        encoding="utf-8",
     )
 
     loader = build_synthetic_loader(config)
