@@ -1,14 +1,6 @@
 """
-Factory for prior construction.
-
-The input is a prior profile from the prior YAML. The output is a resolved
-prior configuration that can be passed directly to PyMCUnfolder.
-The RL-based profiles use the OMpy right-hand convention,
-    expected_on = x @ response_matrix + background_reference
-    eta         = x @ gamma_resolution_matrix
-where response_matrix = D @ G_g and gamma_resolution_matrix = G_g.
-No clipped ON-OFF signal vector is used. If no background is included,
-background_reference is the zero vector.
+Build prior configurations from the prior YAML files.
+The priors based on an RL estimate first compute the reference spectrum and then use it to set the center and/or width of the prior used by the PyMCUnfolder class.
 """
 
 from __future__ import annotations
@@ -31,7 +23,7 @@ DEFAULT_ALPHA = 1.0
 
 
 class PriorBuilder:
-    """Base class for prior-profile builders."""
+    """Base class for prior builders."""
 
     def build(
         self,
@@ -48,7 +40,6 @@ _PRIOR_BUILDERS: dict[str, PriorBuilder] = {}
 
 
 def register_prior(tag: str):
-    """Register a prior builder under a YAML dist tag."""
 
     def wrapper(cls):
         _PRIOR_BUILDERS[tag] = cls()
@@ -64,18 +55,20 @@ def make_prior(
     n_on: np.ndarray | None = None,
     background_reference: np.ndarray | None = None,
 ) -> dict[str, Any]:
-    """Resolve a prior profile into a PyMC-ready prior specification."""
+    """
+    The prior profile from the YAML is made ready for usage in PyMC
+    """
 
     profile = copy.deepcopy(profile)
 
     if "dist" not in profile:
-        raise KeyError("Prior profile must contain 'dist'.")
+        raise KeyError("Prior profile must contain dist.")
 
     dist_tag = str(profile["dist"]).strip().lower()
     params = profile.get("params", {}) or {}
 
     if not isinstance(params, dict):
-        raise TypeError("Prior profile 'params' must be a mapping.")
+        raise TypeError("Prior profile params must be a mapping.")
 
     builder = _PRIOR_BUILDERS.get(dist_tag)
 
@@ -145,17 +138,12 @@ def make_prior(
 
 
 def _check_unknown_params(params: dict, allowed: set[str], dist_name: str) -> None:
-    """Raise if a prior profile contains unsupported parameters."""
-
     unknown = sorted(set(params) - allowed)
-
     if unknown:
         raise ValueError(f"Unknown parameters for {dist_name}: {unknown}.")
 
 
 def _positive_float(params: dict, name: str, default: float) -> float:
-    """Read a finite positive floating-point parameter."""
-
     return require_float(
         params.get(name, default),
         name,
@@ -165,18 +153,12 @@ def _positive_float(params: dict, name: str, default: float) -> float:
 
 
 def _integer_or_auto(params: dict, name: str, default: str = "auto") -> int | str:
-    """Read an integer parameter or the string 'auto'."""
-
     value = params.get(name, default)
-
     if isinstance(value, str):
         value = value.strip().lower()
-
         if value != "auto":
-            raise ValueError(f"{name} must be an integer or 'auto'.")
-
+            raise ValueError(f"{name} must be an integer or auto.")
         return "auto"
-
     return require_int(value, name, minimum=0)
 
 
@@ -184,8 +166,6 @@ def _eta_from_rl(
     x_rl: np.ndarray,
     gamma_resolution_matrix: np.ndarray,
 ) -> np.ndarray:
-    """Return eta_rl = x_rl @ G_g."""
-
     eta_rl = x_rl @ gamma_resolution_matrix
 
     return require_finite_array(
@@ -203,8 +183,6 @@ def _rl_reference(
     background_reference: np.ndarray,
     rl_iterations: int | str,
 ) -> tuple[np.ndarray, dict]:
-    """Return the raw selected RL reference and metadata."""
-
     x_rl, rl_metadata = rl_reference(
         n_on=n_on,
         response_matrix=response_matrix,
@@ -212,14 +190,12 @@ def _rl_reference(
         background_reference=background_reference,
         rl_iterations=rl_iterations,
     )
-
     x_rl = require_finite_array(
         x_rl,
         "x_rl",
         ndim=1,
         nonnegative=True,
     )
-
     return x_rl, rl_metadata
 
 
@@ -227,16 +203,6 @@ def _apply_rl_floor(
     x_rl: np.ndarray,
     rl_floor: float,
 ) -> tuple[np.ndarray, dict]:
-    """Apply the RL stability floor used by RL-based empirical priors.
-
-    The returned vector is the reference that enters the prior construction.
-    It is used both as the mean-preserving prior center and as the input to the adaptive 
-    sigma schedule. Keeping these two uses synchronized avoids asituation 
-    where extremely small selected RL values are protected in the
-    prior center but still treated as literal zero-scale inputs when computing
-    the resolution-limited prior-width schedule.
-    """
-
     x_rl = require_finite_array(
         x_rl,
         "x_rl",
@@ -257,7 +223,6 @@ def _apply_rl_floor(
         ndim=1,
         nonnegative=True,
     )
-
     floor_mask = x_rl < rl_floor
     metadata = {
         "rl_floor": float(rl_floor),
@@ -268,13 +233,12 @@ def _apply_rl_floor(
         "rl_floored_min": float(np.min(x_floored)),
         "rl_floored_max": float(np.max(x_floored)),
     }
-
     return x_floored, metadata
 
 
 @register_prior("gamma_lognormal_mean_rl")
 class GammaLogNormalMeanRL(PriorBuilder):
-    """Main RL-centered Gamma--Lognormal mean prior."""
+    """Main RL-centered prior."""
 
     def build(
         self,
@@ -319,7 +283,6 @@ class GammaLogNormalMeanRL(PriorBuilder):
             sigma_max=sigma_max,
             c_ref=c_ref,
         )
-
         return {
             "dist": "gamma_lognormal_mean",
             "params": {
@@ -343,11 +306,8 @@ class GammaLogNormalMeanRL(PriorBuilder):
 
 @register_prior("gamma_lognormal_mean_constant_center")
 class GammaLogNormalMeanConstantCenter(PriorBuilder):
-    """Robustness prior with a constant prior center.
-
-    The stability-floored RL reference is still computed for diagnostics
-    and for the adaptive sigma schedule, but the prior center is replaced by the
-    mean floored RL scale over the active Eg window.
+    """
+    Prior-sensitivity case with a constant center.
     """
     
     def build(
@@ -363,8 +323,7 @@ class GammaLogNormalMeanConstantCenter(PriorBuilder):
             "sigma_min",
             "sigma_max",
             "c_ref",
-            "rl_iterations",
-            "rl_floor",
+            "rl_iterations","rl_floor"
         }
         _check_unknown_params(params, allowed, "gamma_lognormal_mean_constant_center")
 
@@ -414,18 +373,15 @@ class GammaLogNormalMeanConstantCenter(PriorBuilder):
                 **rl_metadata,
                 **floor_metadata,
                 **sigma_metadata,
-            },
+            }
         }
 
 
 @register_prior("gamma_lognormal_mean_hyper")
 class GammaLogNormalMeanHyper(PriorBuilder):
-    """Fully Bayesian hyperprior version.
-
-    The RL reference is computed only for diagnostics and result-file
-    consistency. It is not used to center the hyperprior.
     """
-
+    Hyperprior version used for sensitivity checks.
+    """
     def build(
         self,
         response_matrix: np.ndarray,
@@ -439,10 +395,9 @@ class GammaLogNormalMeanHyper(PriorBuilder):
             "theta_mu",
             "theta_sigma",
             "tau_sigma",
-            "rl_iterations",
+            "rl_iterations"
         }
         _check_unknown_params(params, allowed, "gamma_lognormal_mean_hyper")
-
         alpha = _positive_float(params, "alpha", 1.0)
         theta_mu = require_float(params.get("theta_mu", 0.0), "theta_mu")
         theta_sigma = _positive_float(params, "theta_sigma", 5.0)
@@ -456,9 +411,7 @@ class GammaLogNormalMeanHyper(PriorBuilder):
             background_reference=background_reference,
             rl_iterations=rl_iterations,
         )
-
         eta_rl = _eta_from_rl(x_rl, gamma_resolution_matrix)
-
         return {
             "dist": "gamma_lognormal_mean_hyper",
             "params": {
@@ -474,13 +427,15 @@ class GammaLogNormalMeanHyper(PriorBuilder):
                 "rl_used_for": "diagnostics",
                 "rl_background_model": "fixed_reference_in_on_likelihood",
                 **rl_metadata,
-            },
+            }
         }
 
 
 @register_prior("lognormal_rl_matched_cv")
 class LogNormalRLMatchedCV(PriorBuilder):
-    """Lognormal robustness prior matched to the main prior's marginal CV."""
+    """
+    Lognormal prior used for comparison and matched to the Gamma prior scale
+    """
 
     def build(
         self,
@@ -496,10 +451,9 @@ class LogNormalRLMatchedCV(PriorBuilder):
             "sigma_max",
             "c_ref",
             "rl_iterations",
-            "rl_floor",
+            "rl_floor"
         }
         _check_unknown_params(params, allowed, "lognormal_rl_matched_cv")
-
         alpha_reference = _positive_float(params, "alpha_reference", DEFAULT_ALPHA)
 
         sigma_min = _positive_float(params, "sigma_min", DEFAULT_SIGMA_MIN)
@@ -517,7 +471,6 @@ class LogNormalRLMatchedCV(PriorBuilder):
         )
 
         x_center, floor_metadata = _apply_rl_floor(x_rl, rl_floor)
-
         sigma_gamma, sigma_shape, eta_rl, sigma_metadata = adaptive_sigma_from_rl(
             x_rl=x_center,
             gamma_resolution_matrix=gamma_resolution_matrix,
@@ -525,10 +478,8 @@ class LogNormalRLMatchedCV(PriorBuilder):
             sigma_max=sigma_max,
             c_ref=c_ref,
         )
-
         sigma_lognormal = np.sqrt(
-            sigma_gamma**2 + np.log(1.0 + 1.0 / alpha_reference)
-        )
+            sigma_gamma**2 + np.log(1.0 + 1.0 / alpha_reference))
 
         mu_log = np.log(x_center) - 0.5 * sigma_lognormal**2
 

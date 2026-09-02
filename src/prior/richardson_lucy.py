@@ -1,11 +1,7 @@
 """
-Richardson--Lucy reference estimate for prior construction.
-
-The production prior uses the background-aware forward model
-    expected_on = x @ response_matrix + background_reference,
-where background_reference may be zero when no background is included. The RL
-iteration can either be fixed by an integer or chosen automatically by comparing
-eta-space iteration changes with an eta-space Poisson-resampling noise level.
+Richardson--Lucy reference used for the empirical prior. 
+The ON counts are used directly and a fixed background term is used in the forward model
+    expected_on = x @ response_matrix + background_reference
 """
 
 from __future__ import annotations
@@ -25,14 +21,11 @@ RESAMPLE_SEED = 123
 
 
 def _response_matrix(response_matrix: np.ndarray) -> np.ndarray:
-    """Return a valid non-negative response matrix."""
-
     response_matrix = require_finite_array(
         response_matrix,
         "response_matrix",
         ndim=2,
-        nonnegative=True,
-    )
+        nonnegative=True)
 
     if response_matrix.shape[0] < 1 or response_matrix.shape[1] < 1:
         raise ValueError("response_matrix must be non-empty.")
@@ -44,26 +37,21 @@ def _gamma_resolution_matrix(
     gamma_resolution_matrix: np.ndarray,
     nparams: int,
 ) -> np.ndarray:
-    """Return a valid gamma-resolution matrix."""
-
     gamma_resolution_matrix = require_finite_array(
         gamma_resolution_matrix,
         "gamma_resolution_matrix",
         ndim=2,
-        nonnegative=True,
-    )
+        nonnegative=True)
 
     if gamma_resolution_matrix.shape != (nparams, nparams):
         raise ValueError(
             "gamma_resolution_matrix must have shape "
             f"({nparams}, {nparams}), got {gamma_resolution_matrix.shape}."
         )
-
     return gamma_resolution_matrix
 
 
 def _on_counts(values: np.ndarray, n_out: int) -> np.ndarray:
-    """Return observed ON counts as a non-negative vector."""
 
     values = require_finite_array(
         values,
@@ -79,8 +67,6 @@ def _on_counts(values: np.ndarray, n_out: int) -> np.ndarray:
 
 
 def _background_reference(values: np.ndarray | None, n_out: int) -> np.ndarray:
-    """Return fixed background reference as a non-negative vector."""
-
     if values is None:
         return np.zeros(n_out, dtype=float)
 
@@ -93,8 +79,7 @@ def _background_reference(values: np.ndarray | None, n_out: int) -> np.ndarray:
 
     if values.size != n_out:
         raise ValueError(
-            f"background_reference length must be {n_out}, got {values.size}."
-        )
+            f"background_reference length must be {n_out}, got {values.size}." )
 
     return values
 
@@ -104,8 +89,6 @@ def _initial_signal_scale(
     background_reference: np.ndarray,
     nparams: int,
 ) -> float:
-    """Return a positive initial total signal scale."""
-
     signal_scale = float(np.sum(n_on) - np.sum(background_reference))
 
     if signal_scale <= 0.0:
@@ -114,17 +97,14 @@ def _initial_signal_scale(
     return signal_scale
 
 
-def richardson_lucy_history(
+def richardson_lucy_iterates(
     n_on: np.ndarray,
     response_matrix: np.ndarray,
     background_reference: np.ndarray | None = None,
     n_iter: int = 30,
 ) -> np.ndarray:
-    """Run RL iterations and return the full x-space history.
-
-    The update uses the ON counts directly. Background is included in the
-    forward model and is never subtracted or clipped into a separate signal
-    count vector.
+    """
+    Run background-aware RL iterations and return the iterates.
     """
 
     n_iter = require_int(n_iter, "n_iter", minimum=0)
@@ -142,41 +122,42 @@ def richardson_lucy_history(
     )
 
     estimate = np.full(nparams, signal_scale / float(nparams), dtype=float)
-    history = np.empty((n_iter + 1, nparams), dtype=float)
-    history[0] = estimate
+    iterates = np.empty((n_iter + 1, nparams), dtype=float)
+    iterates[0] = estimate
 
     for iteration in range(1, n_iter + 1):
         expected_on = estimate @ response_matrix + background_reference
         ratio = n_on / (expected_on + EPS)
         back_projection = ratio @ response_matrix.T
         estimate = estimate * back_projection
-        history[iteration] = estimate
+        iterates[iteration] = estimate
 
-    return history
+    return iterates
 
 
 def eta_relative_change(
-    eta_history: np.ndarray,
+    eta_iterates: np.ndarray,
     window: int = ITERATION_WINDOW,
 ) -> np.ndarray:
-    """Return the relative eta-space RL change over a fixed iteration window."""
+    """
+    Return the relative change of eta_RL over a fixed iteration window."""
 
-    eta_history = require_finite_array(
-        eta_history,
-        "eta_history",
+    eta_iterates = require_finite_array(
+        eta_iterates,
+        "eta_iterates",
         ndim=2,
         nonnegative=True,
     )
 
     window = require_int(window, "window", minimum=1)
 
-    change = np.full(eta_history.shape[0], np.nan, dtype=float)
+    change = np.full(eta_iterates.shape[0], np.nan, dtype=float)
 
-    for iteration in range(window, eta_history.shape[0]):
+    for iteration in range(window, eta_iterates.shape[0]):
         numerator = np.linalg.norm(
-            eta_history[iteration] - eta_history[iteration - window]
+            eta_iterates[iteration] - eta_iterates[iteration - window]
         )
-        denominator = np.linalg.norm(eta_history[iteration]) + EPS
+        denominator = np.linalg.norm(eta_iterates[iteration]) + EPS
         change[iteration] = numerator / denominator
 
     return change
@@ -191,7 +172,9 @@ def eta_resampling_noise_level(
     n_resamples: int = N_RESAMPLES,
     rng_seed: int = RESAMPLE_SEED,
 ) -> np.ndarray:
-    """Estimate eta-space RL variability by Poisson resampling ON counts."""
+    """
+    Estimate the variability of eta_RL by Poisson resampling ON counts.
+    """
 
     n_iter_max = require_int(n_iter_max, "n_iter_max", minimum=1)
     n_resamples = require_int(n_resamples, "n_resamples", minimum=2)
@@ -207,31 +190,29 @@ def eta_resampling_noise_level(
 
     n_on = _on_counts(n_on, n_out)
     background_reference = _background_reference(background_reference, n_out)
-
     rng = np.random.default_rng(rng_seed)
-
     mean_eta = None
     m2_eta = None
 
     for resample_index in range(n_resamples):
         n_on_resampled = rng.poisson(np.maximum(n_on, 0.0)).astype(np.float64)
 
-        x_history = richardson_lucy_history(
+        x_iterates = richardson_lucy_iterates(
             n_on=n_on_resampled,
             response_matrix=response_matrix,
             background_reference=background_reference,
             n_iter=n_iter_max,
         )
 
-        eta_history = x_history @ gamma_resolution_matrix
+        eta_iterates = x_iterates @ gamma_resolution_matrix
 
         if mean_eta is None:
-            mean_eta = np.zeros_like(eta_history, dtype=np.float64)
-            m2_eta = np.zeros_like(eta_history, dtype=np.float64)
+            mean_eta = np.zeros_like(eta_iterates, dtype=np.float64)
+            m2_eta = np.zeros_like(eta_iterates, dtype=np.float64)
 
-        delta = eta_history - mean_eta
+        delta = eta_iterates - mean_eta
         mean_eta += delta / float(resample_index + 1)
-        delta2 = eta_history - mean_eta
+        delta2 = eta_iterates - mean_eta
         m2_eta += delta * delta2
 
     if mean_eta is None or m2_eta is None:
@@ -241,7 +222,6 @@ def eta_resampling_noise_level(
 
     numerator = np.sqrt(np.sum(eta_variance, axis=1))
     denominator = np.linalg.norm(mean_eta, axis=1) + EPS
-
     noise_level = numerator / denominator
     noise_level[~np.isfinite(noise_level)] = np.nan
 
@@ -260,11 +240,10 @@ def automatic_iteration_from_eta_noise(
     min_consecutive: int = MIN_CONSECUTIVE,
     rng_seed: int = RESAMPLE_SEED,
 ) -> tuple[int, np.ndarray, dict]:
-    """Return RL iteration from eta-space semi-convergence.
-
+    """
     The iteration is the earliest t for which
         Delta_eta(t; window) / N_eta(t) <= ratio_threshold
-    holds for min_consecutive consecutive iterations. If no such t is found,
+    holds for min_consecutive iterations. If no such t is found,
     n_iter_max is used.
     """
 
@@ -277,10 +256,9 @@ def automatic_iteration_from_eta_noise(
         ratio_threshold,
         "ratio_threshold",
         minimum=0.0,
-        minimum_inclusive=False,
-    )
+        minimum_inclusive=False)
 
-    x_history = richardson_lucy_history(
+    x_iterates = richardson_lucy_iterates(
         n_on=n_on,
         response_matrix=response_matrix,
         background_reference=background_reference,
@@ -289,11 +267,11 @@ def automatic_iteration_from_eta_noise(
 
     gamma_resolution_matrix = _gamma_resolution_matrix(
         gamma_resolution_matrix,
-        nparams=x_history.shape[1],
+        nparams=x_iterates.shape[1],
     )
 
-    eta_history = x_history @ gamma_resolution_matrix
-    delta_eta = eta_relative_change(eta_history, window=window)
+    eta_iterates = x_iterates@ gamma_resolution_matrix
+    delta_eta = eta_relative_change(eta_iterates, window=window)
 
     noise_level = eta_resampling_noise_level(
         n_on=n_on,
@@ -338,8 +316,7 @@ def automatic_iteration_from_eta_noise(
         "rl_min_consecutive": int(min_consecutive),
         "rl_resample_seed": int(rng_seed),
     }
-
-    return int(iteration), x_history, metadata
+    return int(iteration), x_iterates, metadata
 
 
 def rl_reference(
@@ -349,19 +326,17 @@ def rl_reference(
     background_reference: np.ndarray | None = None,
     rl_iterations: int | str = "auto",
 ) -> tuple[np.ndarray, dict]:
-    """Return the RL reference spectrum and metadata.
-
-    If rl_iterations is 'auto', the iteration is selected by eta-space
-    semi-convergence. If it is an integer, that fixed iteration is used.
+    """
+    Return RL reference spectrum and metadata. 
     """
 
     if isinstance(rl_iterations, str):
         rl_iterations = rl_iterations.strip().lower()
 
         if rl_iterations != "auto":
-            raise ValueError("rl_iterations must be an integer or 'auto'.")
+            raise ValueError("rl_iterations must be an integer or auto.")
 
-        iteration, x_history, metadata = automatic_iteration_from_eta_noise(
+        iteration, x_iterates, metadata = automatic_iteration_from_eta_noise(
             n_on=n_on,
             response_matrix=response_matrix,
             gamma_resolution_matrix=gamma_resolution_matrix,
@@ -371,7 +346,7 @@ def rl_reference(
     else:
         iteration = require_int(rl_iterations, "rl_iterations", minimum=0)
 
-        x_history = richardson_lucy_history(
+        x_iterates = richardson_lucy_iterates(
             n_on=n_on,
             response_matrix=response_matrix,
             background_reference=background_reference,
@@ -384,10 +359,9 @@ def rl_reference(
             "rl_iteration": int(iteration),
             "rl_delta_eta": np.nan,
             "rl_noise_level": np.nan,
-            "rl_change_noise_ratio": np.nan,
-        }
+            "rl_change_noise_ratio": np.nan }
 
-    x_rl = x_history[iteration]
+    x_rl = x_iterates[iteration]
     x_rl = require_finite_array(
         x_rl,
         "x_rl",
