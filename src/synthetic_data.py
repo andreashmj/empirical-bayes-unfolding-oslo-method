@@ -32,20 +32,17 @@ import ompy as om
 import ompy.response
 from ompy.detector.detector import LambdaExDetector
 
-from .input_checks import (
-    require_bool,
-    require_finite_array,
-    require_float,
-    require_int,
-)
+from .input_checks import require_bool,  require_finite_array, require_float, require_int
 from .paths import DATA_DIR, repo_path
 
 
 class SyntheticDataLoader:
-    """Generate synthetic Oslo-method data on an OMpy Ex-Eg grid.
+    """
+    
+    Generate synthetic Oslo-method data on an OMpy Ex-Eg grid.
 
     Args:
-        mat: Optional emitted truth matrix. If omitted, 'mat_path' is loaded.
+        mat: Optional emitted truth matrix. If omitted, mat_path is loaded.
         mat_path: Path to the emitted truth matrix.
         response_db: Response database name used by OMpy.
         rebin_factors: Rebinning factors '(Ex factor, Eg factor)'.
@@ -62,6 +59,8 @@ class SyntheticDataLoader:
         sigma_eg: Eg-resolution normalization passed to the response.
         include_ex_smearing: Whether to include Ex-resolution smearing.
         fwhm_ex_kev: Ex-resolution FWHM used when Ex smearing is enabled.
+        
+        
     """
 
     def __init__(

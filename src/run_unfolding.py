@@ -1,8 +1,8 @@
 """
 Run Bayesian unfolding for selected excitation-energy rows.
 
-For each selected Ex row, this module builds the prior, resolves the sampler
-configuration for that row, runs prior or posterior sampling, and stores the
+For each selected Ex bin, this module builds the prior, resolves the sampler
+configuration for that bin, runs prior or posterior sampling, and stores the
 resulting x-space draws in one NetCDF file.
 Stored draw convention:
     x[Ex, Eg, chain, draw]
@@ -30,17 +30,21 @@ from .config_utils import (
     dict_to_namespace,
     load_prior_config,
     load_run_config,
-    load_sampler_config,
+    load_sampler_config
 )
 from .input_checks import (
     require_bool,
     require_finite_array,
-    require_float,
+    require_float
 )
 from .paths import repo_path
 from .prior.factory import make_prior
 from .pymc_unfolding import PyMCUnfolder
 from .synthetic_data import SyntheticDataLoader
+
+# TODO: 
+# - Structure the code so that unfolding for different Ex bins can be run in parallel
+# - Adaptive bin width on the Eg axis
 
 
 def _run_dir(config: argparse.Namespace) -> Path:
@@ -79,14 +83,11 @@ def _as_chain_draw_eg(
 
     if array.ndim != 3:
         raise ValueError(
-            f"{name}: expected shape (chain, draw, Eg), got {array.shape}."
-        )
-
+            f"{name}: expected shape (chain, draw, Eg), got {array.shape}.")
     if array.shape[-1] < active_eg_length:
         raise ValueError(
             f"{name}: Eg axis is too short. "
-            f"Expected at least {active_eg_length}, got {array.shape[-1]}."
-        )
+            f"Expected at least {active_eg_length}, got {array.shape[-1]}." )
 
     return array[..., :active_eg_length]
 
@@ -96,9 +97,12 @@ def _stack_draws(
     ex_values: np.ndarray,
     eg_axis: np.ndarray,
     active_eg_lengths: list[int],
-    name: str,
+    name: str
 ) -> xr.DataArray:
-    """Stack per-Ex draw arrays into one DataArray with dims (Ex, Eg, chain, draw)."""
+    """
+    Stack draw arrays for Ex bins into one DataArray with dims (Ex, Eg, chain, draw).
+    
+    """
 
     checked_arrays: list[np.ndarray] = []
     n_chains = None
@@ -109,8 +113,7 @@ def _stack_draws(
         draw_array = _as_chain_draw_eg(
             array,
             active_eg_length,
-            f"{name}[{ex_index}]",
-        )
+            f"{name}[{ex_index}]")
 
         current_chains, current_draws = draw_array.shape[:2]
 
@@ -119,8 +122,7 @@ def _stack_draws(
         elif current_chains != n_chains:
             raise ValueError(
                 f"{name}: inconsistent chain count at Ex row {ex_index}: "
-                f"{current_chains} vs {n_chains}."
-            )
+                f"{current_chains} vs {n_chains}.")
 
         if n_draws is None:
             n_draws = current_draws
@@ -138,8 +140,7 @@ def _stack_draws(
     data = np.full(
         (len(ex_values), len(eg_axis), n_chains, n_draws),
         np.nan,
-        dtype=np.float64,
-    )
+        dtype=np.float64)
 
     for ex_index, draw_array in enumerate(checked_arrays):
         active_eg_length = active_eg_lengths[ex_index]
@@ -149,8 +150,7 @@ def _stack_draws(
         eg_chain_draw_block = np.moveaxis(
             draw_array[:, :, :active_eg_length],
             source=2,
-            destination=0,
-        )
+            destination=0)
 
         data[ex_index, :active_eg_length, :, :] = eg_chain_draw_block
 
@@ -163,8 +163,7 @@ def _stack_draws(
             "chain": np.arange(n_chains),
             "draw": np.arange(n_draws),
         },
-        name=name,
-    )
+        name=name)
 
 
 def _stack_vectors(
@@ -172,9 +171,12 @@ def _stack_vectors(
     ex_values: np.ndarray,
     eg_axis: np.ndarray,
     active_eg_lengths: list[int],
-    name: str,
+    name: str
 ) -> xr.DataArray:
-    """Stack per-Ex vectors into one DataArray with dims (Ex, Eg)."""
+    """
+    Stack vectors for Ex bins into one DataArray with dims (Ex, Eg).
+    
+    """
 
     data = np.full((len(ex_values), len(eg_axis)), np.nan, dtype=np.float64)
 
@@ -197,8 +199,7 @@ def _stack_vectors(
         data,
         dims=("Ex", "Eg"),
         coords={"Ex": ex_values, "Eg": eg_axis},
-        name=name,
-    )
+        name=name)
 
 
 def _stack_operators(
@@ -206,9 +207,12 @@ def _stack_operators(
     ex_values: np.ndarray,
     eg_axis: np.ndarray,
     active_eg_lengths: list[int],
-    name: str,
+    name: str
 ) -> xr.DataArray:
-    """Stack per-Ex operator matrices into one DataArray with dims (Ex, Eg_in, Eg_out)."""
+    """
+    Stack operator matrices per Ex into one DataArray with dims (Ex, Eg_in, Eg_out).
+    
+    """
 
     data = np.full(
         (len(ex_values), len(eg_axis), len(eg_axis)),
@@ -240,7 +244,7 @@ def _stack_operators(
         data,
         dims=("Ex", "Eg_in", "Eg_out"),
         coords={"Ex": ex_values, "Eg_in": eg_axis, "Eg_out": eg_axis},
-        name=name,
+        name=name
     )
 
 
@@ -248,19 +252,22 @@ def _background_b0_from_off_counts(
     n_off_observed: np.ndarray,
     background_alpha: float,
 ) -> float:
-    """Return the Gamma prior rate b0 used by the background model."""
+    """
+    Return the Gamma prior rate b0 used by the background model.
+    
+    """
 
     n_off_observed = require_finite_array(
         n_off_observed,
         "n_off_observed",
         ndim=1,
-        nonnegative=True,
+        nonnegative=True
     )
     background_alpha = require_float(
         background_alpha,
         "background_alpha",
         minimum=0.0,
-        minimum_inclusive=False,
+        minimum_inclusive=False
     )
 
     mean_off = float(np.mean(n_off_observed))
@@ -279,25 +286,28 @@ def _background_postmean_from_off_counts(
     background_alpha: float,
     background_b0: float,
 ) -> np.ndarray:
-    """Return the Gamma--Poisson posterior mean background from OFF counts."""
+    """
+    Return the Gamma-Poisson posterior mean background from OFF counts.
+    
+    """
 
     n_off_observed = require_finite_array(
         n_off_observed,
         "n_off_observed",
         ndim=1,
-        nonnegative=True,
+        nonnegative=True
     )
     background_alpha = require_float(
         background_alpha,
         "background_alpha",
         minimum=0.0,
-        minimum_inclusive=False,
+        minimum_inclusive=False
     )
     background_b0 = require_float(
         background_b0,
         "background_b0",
         minimum=0.0,
-        minimum_inclusive=False,
+        minimum_inclusive=False
     )
 
     return (background_alpha + n_off_observed) / (background_b0 + 1.0)
@@ -311,7 +321,10 @@ def _sampler_backend_from_config(sample_config: dict) -> str:
 
 
 class UnfoldManager:
-    """Run unfolding for the Ex rows selected by the run configuration."""
+    """
+    Unfolding run for the Ex bins selected by the run configuration.
+    
+    """
 
     def __init__(self, data_loader: SyntheticDataLoader, config: argparse.Namespace) -> None:
         self.data_loader = data_loader
@@ -340,9 +353,7 @@ class UnfoldManager:
 
             if self.background_model_kind not in {"latent_gamma", "fixed_postmean"}:
                 raise ValueError(
-                    "background_model.kind must be either "
-                    "'latent_gamma' or 'fixed_postmean'."
-                )
+                    "background_model.kind must be either latent_gamma or fixed_postmean." )
         else:
             self.background_model_kind = "none"
             self.background_alpha = np.nan
@@ -362,7 +373,7 @@ class UnfoldManager:
         self.ex_requested = self._selected_ex_values(config)
 
         if not self.ex_requested:
-            raise ValueError("No Ex rows were selected for unfolding.")
+            raise ValueError("No Ex bins were selected for unfolding.")
 
         self.selected_indices = [self.n_matrix.index_X(value) for value in self.ex_requested]
 
@@ -429,7 +440,9 @@ class UnfoldManager:
         return [float(value) for value in np.asarray(self.ex_axis, dtype=float)]
 
     def run_unfolding(self) -> None:
-        """Run unfolding and write the result NetCDF file."""
+        """
+        Run unfolding and write the result NetCDF file
+        """
 
         if self.debug:
             print("\n=== Starting unfolding run ===")
@@ -441,7 +454,7 @@ class UnfoldManager:
         mode = str(self.config.mode).lower().strip()
 
         if mode not in {"prior", "posterior"}:
-            raise ValueError("mode must be either 'prior' or 'posterior'.")
+            raise ValueError("mode must be either prior or posterior.")
 
         for row_index, ex_index in enumerate(self.selected_indices):
             self._run_one_ex_unfolding(row_index, ex_index, mode)
@@ -454,7 +467,10 @@ class UnfoldManager:
         n_off_observed: np.ndarray | None,
         background_b0: float,
     ) -> np.ndarray:
-        """Return the fixed background reference used by the RL prior reference."""
+        """
+        Return the fixed background reference used by the RL prior reference
+        
+        """
 
         if not self.include_background:
             return np.zeros_like(n_observed, dtype=np.float64)
@@ -470,7 +486,10 @@ class UnfoldManager:
     
 
     def _run_one_ex_unfolding(self, row_index: int, ex_index: int, mode: str) -> None:
-        """Run unfolding for one selected Ex row."""
+        """
+        Run unfolding for one selected Ex bin
+        
+        """
 
         ex_requested = float(self.ex_requested[row_index])
         ex_actual = float(self.ex_axis[ex_index])
@@ -882,7 +901,8 @@ class UnfoldManager:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run Bayesian unfolding. Chains are always stored separately."
+        description=
+        "Run Bayesian unfolding. Chains are always stored separately."
     )
     parser.add_argument("-c", "--config", required=True, help="Path to YAML run config.")
     cli = parser.parse_args()
@@ -908,7 +928,6 @@ def main() -> None:
 
     manager = UnfoldManager(loader, config=config)
     manager.run_unfolding()
-
 
 if __name__ == "__main__":
     main()

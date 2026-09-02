@@ -1,14 +1,5 @@
 """
-PyMC unfolding model for one excitation-energy row.
-
-The implementation follows the OMpy right-hand convention used throughout the
-code base,
-    eta = x @ G_g
-    nu  = x @ D @ G_g
-where x is the emitted spectrum, eta is the resolution-limited emitted spectrum,
-and nu is the expected detected signal.
-Returned draw arrays have shape
-    (chain, draw, Eg)
+PyMC unfolding model for one excitation-energy row. The implementation follows the OMpy right-hand convention used throughout the code base.
 """
 
 from __future__ import annotations
@@ -36,7 +27,10 @@ pytensor_config.floatX = FLOATX
 
 
 def _extract_chain_draw_eg(data_array, name: str) -> np.ndarray:
-    """Extract an xarray DataArray as an array with shape (chain, draw, Eg)."""
+    """
+    Extract an xarray DataArray as an array with shape (chain, draw, Eg).
+    
+    """
 
     dims = list(data_array.dims)
 
@@ -65,7 +59,10 @@ def _extract_chain_draw_eg(data_array, name: str) -> np.ndarray:
 
 
 def _finite_vector(values, nparams: int, name: str) -> np.ndarray:
-    """Return a finite vector with the expected length."""
+    """
+    Return a finite vector with the expected length.
+    
+    """
 
     vector = require_finite_array(values, name).reshape(-1)
 
@@ -104,7 +101,10 @@ def _finite_matrix(values, name: str) -> np.ndarray:
 
 
 class PyMCUnfolder:
-    """PyMC implementation for one excitation-energy row."""
+    """
+    Main class for running the unfolding on one Ex bin with PyMC.
+    
+    """
 
     def __init__(self, prior_config: dict, sample_config: dict, debug: bool = False):
         self.prior_config = prior_config
@@ -125,16 +125,12 @@ class PyMCUnfolder:
 
     @staticmethod
     def _positive_transform_kwargs(transform_name: str) -> dict:
-        """Return PyMC keyword arguments for the positive log transform."""
-
         if transform_name != "log":
             raise ValueError("The implementation requires transform: log.")
 
         return {"default_transform": tr.log}
 
     def _init_kwargs(self, name: str, value) -> dict:
-        """Return an initval keyword when RL initialization is enabled."""
-
         if not self.rl_init:
             return {}
 
@@ -149,7 +145,6 @@ class PyMCUnfolder:
         return {"initval": init_value}
 
     def _sampler_initvals(self) -> dict | None:
-        """Return sampler initial values, or None when RL initialization is disabled."""
 
         if not self.rl_init or not self.initvals:
             return None
@@ -165,7 +160,10 @@ class PyMCUnfolder:
         return out
 
     def _build_prior(self, nparams: int):
-        """Build the emitted-spectrum prior in the active Eg window."""
+        """
+        Build the prior on the emitted-spectrum for the relevant Eg bins.
+        
+        """
 
         self.initvals = {}
 
@@ -190,7 +188,10 @@ class PyMCUnfolder:
         return self.x
 
     def _build_gamma_lognormal_mean_prior(self, params: dict, nparams: int):
-        """Build the Gamma-Lognormal mean prior."""
+        """
+        Build the Gamma-Lognormal mean prior.
+        
+        """
 
         alpha = require_float(
             params["alpha"],
@@ -249,7 +250,10 @@ class PyMCUnfolder:
         )
 
     def _build_gamma_lognormal_mean_hyper_prior(self, params: dict, nparams: int):
-        """Build the fully hyperparameterized Gamma-Lognormal mean prior."""
+        """
+        Build the Gamma-Lognormal mean prior with the hyperparameters.
+        
+        """
 
         alpha = require_float(
             params["alpha"],
@@ -315,7 +319,9 @@ class PyMCUnfolder:
         )
 
     def _build_lognormal_prior(self, params: dict, nparams: int):
-        """Build a non-centered Lognormal prior for the emitted spectrum."""
+        """
+        Build a non-centered Lognormal prior for the emitted spectrum.
+        """
 
         mu_log = _finite_vector(params["mu_log"], nparams, "prior.mu_log")
         sigma = _positive_vector(params["sigma"], nparams, "prior.sigma")
@@ -325,13 +331,11 @@ class PyMCUnfolder:
             mu=0.0,
             sigma=1.0,
             shape=nparams,
-            **self._init_kwargs("z_x", np.zeros(nparams, dtype=np.float64)),
-        )
+            **self._init_kwargs("z_x", np.zeros(nparams, dtype=np.float64)) )
 
         log_x = pm.Deterministic(
             "log_x",
-            pt.constant(mu_log, dtype=FLOATX)
-            + pt.constant(sigma, dtype=FLOATX) * z_x,
+            pt.constant(mu_log, dtype=FLOATX) + pt.constant(sigma, dtype=FLOATX) * z_x,
         )
 
         return pm.Deterministic("x", pt.exp(log_x))
@@ -342,7 +346,6 @@ class PyMCUnfolder:
         nparams: int,
         mode: str,
     ):
-        """Build the configured background component for prior or posterior mode."""
 
         background_config = self.sample_config["background_model"]
         kind = str(background_config["kind"]).strip().lower()
@@ -379,8 +382,7 @@ class PyMCUnfolder:
             )
 
         raise ValueError(
-            "background_model.kind must be either 'latent_gamma' or "
-            "'fixed_postmean'."
+            "background_model.kind must be either latent_gamma or fixed_postmean."
         )
 
     @staticmethod
@@ -388,7 +390,10 @@ class PyMCUnfolder:
         n_off_obs: np.ndarray,
         background_alpha: float,
     ) -> float:
-        """Return Gamma prior rate b0 from the OFF-count mean."""
+        """
+        Return Gamma prior rate b0 from the OFF-count mean.
+        
+        """
 
         mean_off = float(np.mean(n_off_obs))
 
@@ -405,10 +410,13 @@ class PyMCUnfolder:
         nparams: int,
         background_alpha: float,
     ):
-        """Build the empirical Gamma prior for the latent background expectation."""
+        """
+        Build the empirical Gamma prior for the latent background expectation.
+        
+        """
 
         if n_off_obs is None:
-            raise ValueError("background_model.kind='latent_gamma' requires n_off_obs.")
+            raise ValueError("background_model.kind=latent_gamma requires n_off_obs.")
 
         n_off_obs = _nonnegative_vector(n_off_obs, nparams, "n_off_obs")
         background_b0 = self._background_b0_from_off_counts(
@@ -434,8 +442,6 @@ class PyMCUnfolder:
 
     @staticmethod
     def _add_off_count_likelihood(background_expected, n_off_obs: np.ndarray) -> None:
-        """Condition the posterior background model on the observed OFF counts."""
-
         pm.Poisson("n_off_obs", mu=background_expected, observed=n_off_obs)
 
     def _fixed_postmean_background(
@@ -444,10 +450,12 @@ class PyMCUnfolder:
         nparams: int,
         background_alpha: float,
     ):
-        """Fix the background to the Gamma-Poisson posterior mean from OFF counts."""
+        """
+        Fix the background to the Gamma-Poisson posterior mean from OFF counts.
+        """
 
         if n_off_obs is None:
-            raise ValueError("background_model.kind='fixed_postmean' requires n_off_obs.")
+            raise ValueError("background_model.kind=fixed_postmean requires n_off_obs.")
 
         n_off_obs = _nonnegative_vector(n_off_obs, nparams, "n_off_obs")
         background_b0 = self._background_b0_from_off_counts(
@@ -467,7 +475,6 @@ class PyMCUnfolder:
 
     @staticmethod
     def _wanted_var_names(include_background: bool) -> list[str]:
-        """Return variables that must be extracted from the InferenceData object."""
 
         names = ["x"]
 
@@ -477,7 +484,10 @@ class PyMCUnfolder:
         return names
 
     def _sample_prior(self, model: pm.Model, var_names: list[str]) -> az.InferenceData:
-        """Draw prior samples of the requested latent variables."""
+        """
+        Draw prior samples of the relevant latent variables.
+        
+        """
 
         prior_config = self.sample_config["prior"]
 
@@ -508,7 +518,10 @@ class PyMCUnfolder:
         model: pm.Model,
         var_names: list[str],
     ) -> az.InferenceData:
-        """Sample from the posterior using the configured NUTS backend."""
+        """
+        Sample from the posterior using the given NUTS backend.
+        
+        """
 
         nuts_config = self.sample_config["nuts"]
         nuts_sampler = str(nuts_config.get("nuts_sampler", "pymc")).strip().lower()
@@ -616,7 +629,10 @@ class PyMCUnfolder:
         random_seed: int,
         nuts_config: dict,
     ) -> az.InferenceData:
-        """Sample with the standard PyMC NUTS backend."""
+        """
+        Sample with the standard PyMC NUTS backend.
+        
+        """
 
         pymc_config = nuts_config.get("pymc", {}) or {}
 
@@ -671,7 +687,10 @@ class PyMCUnfolder:
         random_seed: int,
         nuts_config: dict,
     ) -> az.InferenceData:
-        """Sample with the NumPyro or BlackJAX NUTS backend."""
+        """
+        Sample with the NumPyro or BlackJAX NUTS backend.
+        
+        """
 
         jax_config = nuts_config.get("jax", {}) or {}
 
@@ -764,7 +783,11 @@ class PyMCUnfolder:
         random_seed: int,
         nuts_config: dict,
     ) -> az.InferenceData:
-        """Sample with the Nutpie NUTS backend."""
+        """
+        Sample with the Nutpie NUTS backend.
+        
+        
+        """
 
         nutpie_config = nuts_config.get("nutpie", {}) or {}
 
@@ -811,7 +834,7 @@ class PyMCUnfolder:
                 initial_points=initial_points,
             )
         else:
-            raise ValueError("nuts.nutpie.compile_backend must be 'numba' or 'jax'.")
+            raise ValueError("nuts.nutpie.compile_backend must be numba or jax.")
 
         sample_kwargs = dict(
             draws=draws,
@@ -859,7 +882,11 @@ class PyMCUnfolder:
         output_trace_path: str | Path | None,
         debug: bool = False,
     ) -> tuple[np.ndarray, np.ndarray | None]:
-        """Run prior or posterior sampling for one excitation-energy row."""
+        """
+        Run prior or posterior sampling for one excitation-energy bin.
+        
+        
+        """
 
         n_obs = require_finite_array(
             n_obs,
@@ -888,7 +915,7 @@ class PyMCUnfolder:
 
         mode = str(mode).lower().strip()
         if mode not in {"prior", "posterior"}:
-            raise ValueError("mode must be either 'prior' or 'posterior'.")
+            raise ValueError("mode must be either prior or posterior.")
 
         with pm.Model() as model:
             x = self._build_prior(nparams=nparams)
