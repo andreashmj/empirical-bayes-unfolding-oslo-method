@@ -1,8 +1,5 @@
 """
-Global rank-envelope bands.
-
-The algorithm ranks whole spectral curves by two-sided pointwise ranks and the
-extreme-rank-length ordering. The returned center curve is the sample mean.
+Global rank-envelope bands. Whole spectral curves are ranked by the extreme-rank-length ordering. The mean of samples are returned as the center of the curve.
 """
 
 from __future__ import annotations
@@ -13,7 +10,9 @@ import xarray as xr
 from ..input_checks import require_float
 
 def midranks(values: np.ndarray, atol: float = 0.0) -> np.ndarray:
-    """Return one-based midranks for a one-dimensional array."""
+    """
+    Computes the midranks for a one-dimensional array.
+    """
 
     values = np.asarray(values, dtype=float).reshape(-1)
     atol = require_float(atol, "atol", minimum=0.0)
@@ -38,7 +37,9 @@ def midranks(values: np.ndarray, atol: float = 0.0) -> np.ndarray:
     return ranks
 
 def _draw_matrix(draws: xr.DataArray) -> tuple[np.ndarray, np.ndarray]:
-    """Return Eg and draw matrix with shape sample by Eg."""
+    """
+    Different checks before returning the Eg axis and the matrix of draws on this axis.
+    """
 
     if "sample" not in draws.dims or "Eg" not in draws.dims:
         raise ValueError("draws must have dimensions sample and Eg.")
@@ -58,7 +59,9 @@ def _draw_matrix(draws: xr.DataArray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _least_extreme_indices(two_sided_ranks: np.ndarray, n_keep: int) -> np.ndarray:
-    """Return least-extreme curve indices using ERL ordering."""
+    """
+    Using ERL ordering to return least extreme curve indices.
+    """
     sorted_ranks = np.sort(two_sided_ranks, axis=1)
 
     # np.lexsort uses the last key as primary. Reversing the columns gives
@@ -77,7 +80,11 @@ def global_rank_envelope(
     mass: float = 0.95,
     atol_ties: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Return Eg, mean curve, lower band, and upper band."""
+    """
+    The global rank envelopes are given by the 
+    Eg, mean curve, lower band, and upper band.
+    
+    """
 
     mass = require_float(
         mass,

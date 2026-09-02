@@ -1,17 +1,5 @@
 """
-Create raw and formatted sampler benchmark tables for the paper.
-
-The script discovers posterior draws files under
-
-    result_root/benchmarks/<statistics>/<run_id>/posterior/draws.nc
-
-and writes exactly two CSV files by default:
-
-    benchmark_raw_eta.csv
-    benchmark_formatted_eta.csv
-
-Only the paper-reported backends are included by default: PyMC, NumPyro, and
-BlackJAX. Nutpie is skipped unless explicitly requested with --include-backends.
+Create tables with summary data from result files. 
 """
 
 from __future__ import annotations
@@ -24,13 +12,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-
 DEFAULT_BACKENDS = ("pymc", "numpyro", "blackjax")
 
 
 def statistics_label(case_name: str) -> str:
-    """Return display label from a benchmark case directory name."""
-
     case_name = str(case_name).strip()
 
     if case_name == "high_stat":
@@ -42,8 +27,6 @@ def statistics_label(case_name: str) -> str:
 
 
 def statistics_order(label: str) -> int:
-    """Return display order for statistics cases."""
-
     label = str(label).strip().lower()
 
     if label == "high":
@@ -55,8 +38,6 @@ def statistics_order(label: str) -> int:
 
 
 def backend_from_run_id(run_id: str) -> str:
-    """Infer backend name from a run ID such as pymc_rep01."""
-
     run_id = str(run_id).strip().lower()
 
     if "_rep" in run_id:
@@ -66,8 +47,6 @@ def backend_from_run_id(run_id: str) -> str:
 
 
 def backend_label(backend: str) -> str:
-    """Return display label for a backend."""
-
     backend = str(backend).strip().lower()
     labels = {
         "pymc": "PyMC",
@@ -79,8 +58,6 @@ def backend_label(backend: str) -> str:
 
 
 def backend_order(backend: str) -> int:
-    """Return display order for backends."""
-
     backend = str(backend).strip().lower()
     order = {
         "pymc": 0,
@@ -92,8 +69,6 @@ def backend_order(backend: str) -> int:
 
 
 def read_backend(draws_nc: Path, run_id: str) -> str:
-    """Read backend from file metadata, using run ID as fallback."""
-
     with xr.open_dataset(draws_nc) as ds:
         backend = str(ds.attrs.get("sampler_backend", "")).strip().lower()
     if backend:
@@ -102,8 +77,6 @@ def read_backend(draws_nc: Path, run_id: str) -> str:
 
 
 def benchmark_root(result_root: str | Path) -> Path:
-    """Return benchmark root directory."""
-
     result_root = Path(result_root)
     if result_root.name == "benchmarks":
         return result_root
@@ -114,8 +87,6 @@ def discover_draws(
     result_root: str | Path,
     include_backends: tuple[str, ...],
 ) -> list[dict]:
-    """Find benchmark posterior draws files for included backends."""
-
     root = benchmark_root(result_root)
     if not root.exists():
         raise FileNotFoundError(f"Benchmark root does not exist: {root}")
@@ -160,7 +131,6 @@ def discover_draws(
 
 
 def active_eg_length(ds: xr.Dataset, ex_index: int) -> int:
-    """Return active number of Eg bins for one Ex row."""
     if "Eg_len" in ds:
         return int(ds["Eg_len"].isel(Ex=ex_index).values.item())
 
@@ -172,12 +142,10 @@ def active_eg_length(ds: xr.Dataset, ex_index: int) -> int:
 
 
 def active_eg_axis(ds: xr.Dataset, n_eg: int) -> np.ndarray:
-    """Return active Eg grid."""
     return np.asarray(ds["Eg"].values[:n_eg], dtype=float)
 
 
 def per_ex_value(ds: xr.Dataset, name: str, ex_index: int, default=np.nan):
-    """Return scalar value from a per-Ex variable or dataset attribute."""
     if name in ds:
         return ds[name].isel(Ex=ex_index).values.item()
 
@@ -193,7 +161,6 @@ def row_vector(
     n_eg: int,
     fill_nan: float | None = 0.0,
 ) -> np.ndarray:
-    """Return one per-Ex vector sliced to the active Eg range."""
     if name not in ds:
         raise KeyError(f"Dataset missing variable {name!r}.")
 
@@ -209,7 +176,6 @@ def row_vector(
 
 
 def operator_matrix(ds: xr.Dataset, name: str, ex_index: int, n_eg: int) -> np.ndarray:
-    """Return one per-Ex operator matrix sliced to the active Eg range."""
     if name not in ds:
         raise KeyError(f"Dataset missing operator {name!r}.")
 
@@ -225,8 +191,6 @@ def operator_matrix(ds: xr.Dataset, name: str, ex_index: int, n_eg: int) -> np.n
 
 
 def diagnostic_draws(ds: xr.Dataset, ex_index: int, n_eg: int, var: str) -> np.ndarray:
-    """Return draws with shape chain by draw by Eg for x or eta."""
-
     var = str(var).strip().lower()
     if "x" not in ds:
         raise KeyError("Dataset missing variable 'x'.")
@@ -249,7 +213,7 @@ def diagnostic_draws(ds: xr.Dataset, ex_index: int, n_eg: int, var: str) -> np.n
 
 
 def rhat_ess_summary(draws: np.ndarray, eg_axis: np.ndarray, name: str) -> dict:
-    """Summarize per-Eg R-hat and bulk ESS."""
+
     idata = az.from_dict(
         posterior={name: draws},
         coords={"Eg": eg_axis},
@@ -279,7 +243,7 @@ def rhat_ess_summary(draws: np.ndarray, eg_axis: np.ndarray, name: str) -> dict:
 
 
 def trace_path_for_ex(draws_nc: Path, ex_requested: float, n_ex: int) -> Path | None:
-    """Return expected trace path for one Ex row."""
+    
     run_dir = draws_nc.parent
     if n_ex == 1:
         trace_path = run_dir / "trace.nc"
@@ -291,7 +255,6 @@ def trace_path_for_ex(draws_nc: Path, ex_requested: float, n_ex: int) -> Path | 
 
 
 def sample_stat_array(sample_stats: xr.Dataset, names: list[str]) -> np.ndarray | None:
-    """Return the first matching sample-stat array."""
     for name in names:
         if name in sample_stats:
             return np.asarray(sample_stats[name].values)
@@ -299,12 +262,8 @@ def sample_stat_array(sample_stats: xr.Dataset, names: list[str]) -> np.ndarray 
 
 
 def trace_stats_fast(trace_nc: Path | None, max_treedepth: float | None) -> dict:
-    """Return divergence and tree-depth diagnostics from sample_stats only.
-
-    This intentionally opens only the /sample_stats group instead of reading the
-    complete ArviZ InferenceData file. Loading the whole trace file can be very
-    slow for the large benchmark runs and can make the summary script appear to
-    hang after the CSV rows have mostly been computed.
+    """
+    Divergence and tree-depth diagnostics only from sample_stats.
     """
 
     empty = {
@@ -351,12 +310,11 @@ def trace_stats_fast(trace_nc: Path | None, max_treedepth: float | None) -> dict
     return {
         "divergences": divergences,
         "tree_depth_hit_count": tree_depth_hit_count,
-        "tree_depth_hit_percent": tree_depth_hit_percent,
+        "tree_depth_hit_percent": tree_depth_hit_percent
     }
 
 
 def summarize_ex(ds: xr.Dataset, draws_nc: Path, ex_index: int, var: str) -> dict:
-    """Summarize one Ex row in one posterior result file."""
 
     ex_actual = float(ds["Ex"].values[ex_index].item())
     n_eg = active_eg_length(ds, ex_index)
@@ -424,7 +382,7 @@ def summarize_ex(ds: xr.Dataset, draws_nc: Path, ex_index: int, var: str) -> dic
 
 
 def summarize_draws_file(draws_nc: Path, var: str) -> pd.DataFrame:
-    """Summarize all Ex rows in one posterior draws.nc file."""
+
 
     with xr.open_dataset(draws_nc) as ds:
         mode = str(ds.attrs.get("mode", ds.attrs.get("run_mode", ""))).strip().lower()
@@ -444,7 +402,6 @@ def raw_table(
     var: str,
     include_backends: tuple[str, ...],
 ) -> pd.DataFrame:
-    """Return raw per-run, per-Ex benchmark diagnostics."""
 
     items = discover_draws(result_root, include_backends=include_backends)
     rows: list[pd.DataFrame] = []
@@ -480,8 +437,6 @@ def raw_table(
 
 
 def aggregate_table(raw: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate repeated benchmark runs."""
-
     group_columns = [
         "statistics",
         "backend",
@@ -514,15 +469,11 @@ def aggregate_table(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def format_target_accept(value: float) -> str:
-    """Format target acceptance value."""
-
     text = f"{value:.2f}"
     return text.rstrip("0").rstrip(".")
 
 
 def format_mtd(value: float) -> str:
-    """Format maximum tree-depth hit percentage."""
-
     if not np.isfinite(value):
         return ""
 
@@ -533,7 +484,10 @@ def format_mtd(value: float) -> str:
 
 
 def format_time(mean: float, std: float) -> str:
-    """Format time as mean ± standard deviation, rounded to whole seconds."""
+    """
+    Format time as mean + standard deviation, rounded to whole seconds.
+    
+    """
 
     if not np.isfinite(mean):
         return ""
@@ -545,8 +499,10 @@ def format_time(mean: float, std: float) -> str:
 
 
 def format_for_paper(table: pd.DataFrame) -> pd.DataFrame:
-    """Format the benchmark table for paper use."""
-
+    """
+    Give the table a format that can be used in the paper.
+    
+    """
     out = pd.DataFrame()
 
     out["Stats."] = table["statistics"].astype(str)
@@ -568,8 +524,6 @@ def format_for_paper(table: pd.DataFrame) -> pd.DataFrame:
 
 
 def parse_backends(values: list[str] | None) -> tuple[str, ...]:
-    """Return backend filter from CLI values."""
-
     if values is None or len(values) == 0:
         return DEFAULT_BACKENDS
 
@@ -578,29 +532,22 @@ def parse_backends(values: list[str] | None) -> tuple[str, ...]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Summarize benchmark posterior diagnostics."
-    )
+        description="Summarize benchmark posterior diagnostics." )
     parser.add_argument("--result-root",
         default="results",
-        help="Result root containing the benchmarks directory.",
-    )
+        help="Result root containing the benchmarks directory.")
     parser.add_argument("--out-dir",
         default="results/benchmarks",
-        help="Directory for benchmark CSV output.",
-    )
+        help="Directory for benchmark CSV output.")
     parser.add_argument("--var",
         choices=["x", "eta"],
         default="eta",
-        help="Variable used for R-hat and ESS diagnostics.",
-    )
+        help="Variable used for R-hat and ESS diagnostics.")
     parser.add_argument("--include-backends",
         nargs="+",
         default=None,
         help=(
-            "Backends to include in the paper table. Defaults to "
-            "pymc numpyro blackjax. Use this only if you intentionally want "
-            "to include another backend."
-        ),
+            "Backends to include in the paper table. Defaults to pymc numpyro blackjax." ),
     )
     args = parser.parse_args()
 

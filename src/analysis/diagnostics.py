@@ -1,8 +1,5 @@
 """
-Sampling diagnostics for unfolded result files.
-
-This module computes per-Eg R-hat and bulk ESS for x or eta draws, and extracts
-NUTS diagnostics from saved trace files when available.
+Sampling diagnostics for unfolded result files. This script computes R-hat and bulk ESS per Eg bin for x or eta draws.
 """
 
 from __future__ import annotations
@@ -22,7 +19,6 @@ DiagVar = Literal["x", "eta"]
 
 
 def diagnostic_draws(results: UnfoldingResults, ex_actual: float, var: DiagVar) -> np.ndarray:
-    """Return diagnostic draws with shape chain by draw by Eg."""
     var = str(var).strip().lower()
     if var == "x":
         return results.x_cube(ex_actual)
@@ -33,8 +29,6 @@ def diagnostic_draws(results: UnfoldingResults, ex_actual: float, var: DiagVar) 
 
 
 def truth_vector(results: UnfoldingResults, ex_actual: float, var: DiagVar) -> np.ndarray:
-    """Return truth vector in x-space or eta-space."""
-
     var = str(var).strip().lower()
 
     if var == "x":
@@ -51,7 +45,10 @@ def rhat_ess_by_eg(
     eg_axis: np.ndarray,
     name: str,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Compute R-hat and bulk ESS for draws with shape chain by draw by Eg."""
+    """
+    Compute R-hat and bulk ESS.
+    
+    """
 
     idata = az.from_dict(
         posterior={name: draws},
@@ -68,7 +65,6 @@ def rhat_ess_by_eg(
     return rhat.reshape(-1), ess.reshape(-1)
 
 def rhat_ess_summary(draws: np.ndarray, eg_axis: np.ndarray, name: str) -> dict:
-    """Summarize per-Eg R-hat and bulk ESS."""
     rhat, ess = rhat_ess_by_eg(draws, eg_axis, name=name)
 
     rhat_index = np.nanargmax(rhat).item()
@@ -90,12 +86,9 @@ def sample_stat_array(
     sample_stats: xr.Dataset,
     names: list[str],
 ) -> np.ndarray | None:
-    """Return the first matching sample-stat array."""
-
     for name in names:
         if name in sample_stats:
             return np.asarray(sample_stats[name].values)
-
     return None
 
 
@@ -103,7 +96,6 @@ def trace_stats(
     trace_nc: str | Path | None,
     max_treedepth: float | None = None,
 ) -> dict:
-    """Return divergence and maximum-tree-depth diagnostics from trace.nc."""
 
     empty = {
         "divergences": np.nan,
@@ -160,8 +152,6 @@ def trace_path_for_ex(
     ex_requested: float,
     n_ex: int,
 ) -> Path | None:
-    """Return expected trace path for one Ex row."""
-
     run_dir = draws_nc.parent
 
     if n_ex == 1:
@@ -176,7 +166,6 @@ def trace_path_for_ex(
 
 
 def per_ex_value(ds: xr.Dataset, name: str, ex_index: int, default=np.nan):
-    """Return scalar value from a per-Ex variable or dataset attribute."""
 
     if name in ds:
         return ds[name].isel(Ex=ex_index).values.item()
@@ -193,7 +182,6 @@ def summarize_ex(
     draws_nc: str | Path,
     var: DiagVar = "eta",
 ) -> dict:
-    """Summarize one Ex row in a result file."""
 
     ds = results.ds
     draws_nc = Path(draws_nc)
@@ -269,7 +257,6 @@ def summarize_run(
     draws_nc: str | Path,
     var: DiagVar = "eta",
 ) -> pd.DataFrame:
-    """Summarize all Ex rows in one posterior result file."""
 
     results = UnfoldingResults(draws_nc, expected_mode="posterior")
 
