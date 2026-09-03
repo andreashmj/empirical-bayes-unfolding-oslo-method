@@ -1,8 +1,5 @@
 """
-Central Matplotlib style for paper figures.
-
-This module defines the final publication style used by all figures.
-All figure scripts use the same settings.
+Matplotlib style for paper figures. This script gives the style used by all figures.
 """
 
 from __future__ import annotations
@@ -25,14 +22,11 @@ COLUMNWIDTH_IN = COLUMNWIDTH_PT / PT_PER_INCH
 
 @dataclass(frozen=True)
 class FigureSize:
-    """Figure size in inches."""
 
     width_in: float
     height_in: float
 
     def as_tuple(self) -> tuple[float, float]:
-        """Return figure size as a Matplotlib-compatible tuple."""
-
         return (self.width_in, self.height_in)
 
 
@@ -81,8 +75,6 @@ RASTERIZED_FILL = True
 
 
 def figure_size(layout: str = "text", height_to_width: float = 0.62) -> FigureSize:
-    """Return a figure size for a text-width or column-width figure."""
-
     layout = str(layout).strip().lower()
 
     if layout == "text":
@@ -98,8 +90,6 @@ def figure_size(layout: str = "text", height_to_width: float = 0.62) -> FigureSi
 
 
 def apply_style() -> None:
-    """Apply the shared publication Matplotlib style."""
-
     mpl.rcParams.update(
         {
             "text.usetex": True,
@@ -136,8 +126,6 @@ def apply_style() -> None:
 
 
 def apply_axes_style(ax: plt.Axes) -> None:
-    """Apply consistent axis styling to one axes object."""
-
     ax.minorticks_off()
     ax.tick_params(
         which="major",

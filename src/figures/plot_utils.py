@@ -1,5 +1,5 @@
 """
-Small plotting helpers used by paper-figure scripts.
+Small plotting helpers used by figure scripts.
 """
 
 from __future__ import annotations
@@ -18,15 +18,13 @@ from .style import PANEL_LABEL_SIZE
 
 
 def rgba(color: str, alpha: float) -> tuple[float, float, float, float]:
-    """Return an RGBA tuple from a color and alpha."""
+    """RGBA tuple from a color and alpha."""
 
     red, green, blue, _ = to_rgba(color)
     return (red, green, blue, float(alpha))
 
 
 def latex_ex_label(ex_requested: float | None, ex_actual: float) -> str:
-    """Return a compact LaTeX label for an excitation-energy row."""
-
     ex_value = float(ex_requested) if ex_requested is not None else float(ex_actual)
     return rf"$E_x \approx {ex_value:.0f}\,\mathrm{{keV}}$"
 
@@ -43,7 +41,10 @@ def steps(
     zorder: float = 3.0,
     rasterized: bool = False,
 ) -> Line2D:
-    """Plot a step-mid curve and return the line object."""
+    """
+    Plot a step-mid curve and return the line object.
+    
+    """
 
     line, = ax.plot(
         x,
@@ -73,7 +74,9 @@ def fill_step_band(
     zorder: float = 2.0,
     rasterized: bool = True,
 ):
-    """Draw a step-mid uncertainty band."""
+    """
+    Draw a step-mid uncertainty band.
+    """
 
     if edgecolor is None:
         edgecolor = facecolor
@@ -104,7 +107,9 @@ def add_top_legend(
     fontsize: float | None = None,
     handler_map=None,
 ):
-    """Add a single legend centered above the figure panels."""
+    """
+    Add a single legend centered above the figure panels.
+    """
 
     return fig.legend(
         handles=handles,
@@ -127,7 +132,6 @@ def save_or_show(
     tag: str = "figure",
     show: bool = True,
 ) -> None:
-    """Save a figure when an output path is given; otherwise show it."""
 
     if out is not None:
         output_path = Path(out)
@@ -142,7 +146,9 @@ def save_or_show(
 
 
 def panel_id(index: int) -> str:
-    """Return panel label letters: 0 -> a, 1 -> b, ..., 26 -> aa."""
+    """
+    Panel label letters
+    """
 
     if index < 0:
         raise ValueError("panel index must be non-negative.")
@@ -162,7 +168,6 @@ def panel_id(index: int) -> str:
 
 
 def panel_label_text(label: str) -> str:
-    """Return LaTeX panel-label text."""
 
     label = str(label).strip()
 
@@ -181,7 +186,6 @@ def add_panel_label(
     box: bool = False,
     box_alpha: float = 0.85,
 ) -> None:
-    """Add a panel label in axes coordinates."""
 
     bbox = None
 
@@ -215,7 +219,6 @@ def add_panel_labels(
     box: bool = False,
     box_axes=None,
 ) -> None:
-    """Add sequential panel labels to a list of axes."""
 
     boxed_axes = set(box_axes) if box_axes is not None else None
 
@@ -238,15 +241,11 @@ def add_panel_labels(
 
 
 def _kev_to_mev_label(value: float, decimals: int) -> str:
-    """Return a keV tick value formatted as MeV."""
-
     label = f"{value / 1000.0:.{decimals}f}"
     return label.rstrip("0").rstrip(".")
 
 
 def use_MeV_on_xaxis(ax: plt.Axes, decimals: int = 2) -> plt.Axes:
-    """Format an x axis with underlying values in keV shown as MeV."""
-
     ax.xaxis.set_major_formatter(
         FuncFormatter(lambda value, position: _kev_to_mev_label(value, decimals))
     )
@@ -254,8 +253,6 @@ def use_MeV_on_xaxis(ax: plt.Axes, decimals: int = 2) -> plt.Axes:
 
 
 def use_MeV_on_yaxis(ax: plt.Axes, decimals: int = 2) -> plt.Axes:
-    """Format a y axis with underlying values in keV shown as MeV."""
-
     ax.yaxis.set_major_formatter(
         FuncFormatter(lambda value, position: _kev_to_mev_label(value, decimals))
     )
@@ -263,22 +260,16 @@ def use_MeV_on_yaxis(ax: plt.Axes, decimals: int = 2) -> plt.Axes:
 
 
 def hide_shared_x_ticklabels(axes) -> None:
-    """Hide x tick labels on a sequence of shared-x axes."""
-
     for ax in axes:
         ax.tick_params(labelbottom=False)
 
 
 def hide_shared_y_ticklabels(axes) -> None:
-    """Hide y tick labels on a sequence of shared-y axes."""
-
     for ax in axes:
         ax.tick_params(labelleft=False)
 
 
 def y_limit_top(arrays: list[np.ndarray], factor: float = 1.12) -> float:
-    """Return a positive y-axis upper limit from a list of arrays."""
-
     finite_values = []
 
     for values in arrays:
@@ -299,8 +290,6 @@ def y_limits_with_zero_room(
     y_top: float,
     lower_fraction: float = 0.035,
 ) -> tuple[float, float]:
-    """Return linear y limits with a small margin below zero."""
-
     y_top = max(float(y_top), 1.0)
     return -float(lower_fraction) * y_top, y_top
 
@@ -313,8 +302,6 @@ def set_linear_y_with_zero_room(
     draw_zero: bool = True,
     zero_color: str = "black",
 ) -> tuple[float, float]:
-    """Set a linear y axis with room below zero and optional zero line."""
-
     y_top = y_limit_top(arrays, factor=top_factor)
     limits = y_limits_with_zero_room(y_top, lower_fraction=lower_fraction)
     ax.set_ylim(*limits)
@@ -332,8 +319,6 @@ def set_symlog_y_with_room(
     top_factor: float = 1.25,
     y_lower: float = -1.0,
 ) -> tuple[float, float]:
-    """Set a symlog y axis with a common paper-style upper limit."""
-
     y_top = y_limit_top(arrays, factor=top_factor)
     ax.set_yscale("symlog", linthresh=float(linthresh))
     ax.set_ylim(float(y_lower), y_top)
@@ -346,13 +331,6 @@ def local_y_limits(
     arrays: list[np.ndarray],
     padding_fraction: float = 0.08,
 ) -> tuple[float, float]:
-    """Return local y limits for a zoom panel.
-
-    The local zoom is allowed to cut the y-axis above zero. The limits are
-    based on the plotted values with a small margin around the local minimum
-    and maximum.
-    """
-
     finite_values = []
 
     for values in arrays:
@@ -388,8 +366,6 @@ def set_local_y_axis(
     lower_tick_margin: float = 0.18,
     upper_tick_margin: float = 0.10,
 ) -> None:
-    """Set local y limits with room around the lowest and highest ticks."""
-
     y_lower = float(y_lower)
     y_upper = float(y_upper)
 
@@ -420,8 +396,6 @@ def add_zero_line(
     alpha: float = 0.70,
     zorder: float = 1.2,
 ):
-    """Add a subtle zero line when zero is inside the y range."""
-
     y_lower, y_upper = ax.get_ylim()
 
     if not (y_lower < 0.0 < y_upper):
@@ -448,8 +422,6 @@ def add_zoom_guides(
     connector_linewidth: float = 0.42,
     connector_alpha: float = 0.60,
 ) -> None:
-    """Shade zoom windows and connect them to zoom panels."""
-
     y_bottom = ax_overview.get_ylim()[0]
 
     for ax_zoom, window in zip(zoom_axes, windows):
