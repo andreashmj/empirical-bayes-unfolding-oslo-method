@@ -24,7 +24,9 @@ from ..style import COLORS, apply_axes_style, figure_size
 
 
 def choose_draw_subset(draws: np.ndarray, max_draws: int, seed: int) -> np.ndarray:
-    """Return a reproducible subset of draw curves."""
+    """
+    Return a reproducible subset of draw curves.
+    """
     draws = np.asarray(draws, dtype=float)
     if max_draws < 1:
         raise ValueError("max_draws must be positive.")
@@ -49,7 +51,9 @@ def plot_prior_draws(
     out: str | Path | None = None,
     show: bool = True,
 ) -> plt.Figure:
-    """Create the prior-draw figure in eta-space."""
+    """
+    Create the figure with prior draws in eta-space.
+    """
 
     results = UnfoldingResults(repo_path(nc_path), expected_mode="prior")
 

@@ -1,5 +1,5 @@
 """
-Command-line dispatcher for methods figures.
+CLI parsers for creating the figures in the methods section.
 """
 from __future__ import annotations
 
@@ -18,21 +18,18 @@ from .prior_draws import plot_prior_draws
 
 
 def repo_path_or_none(path: str | None) -> Path | None:
-    """Return repo_path(path), or None when no output path is given."""
     if path is None:
         return None
     return repo_path(path)
 
 
 def add_common_figure_args(parser: argparse.ArgumentParser) -> None:
-    """Add arguments shared by method-figure commands."""
     parser.add_argument("--out", default=None)
     parser.add_argument("--no-show", dest="show", action="store_false")
     parser.set_defaults(show=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the methods-figure command-line parser."""
     parser = argparse.ArgumentParser(
         description="Generate methods figures for the unfolding article."
     )
@@ -219,7 +216,9 @@ def run_command(args: argparse.Namespace) -> None:
         raise ValueError(f"Unknown command: {args.cmd}")
 
 def main(argv: list[str] | None = None) -> None:
-    """Run the methods-figure CLI."""
+    """
+    Run the methods-figure CLI.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     run_command(args)

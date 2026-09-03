@@ -1,9 +1,5 @@
 """
-NUTS sampler schematic.
-
-The figure illustrates one NUTS tree expansion with forward and backward
-leapfrog points, candidate nodes, one selected sample, endpoint momenta, and
-the No-U-Turn span.
+NUTS sampler schematic. The figure illustrates one NUTS tree expansion.
 """
 from __future__ import annotations
 
@@ -94,7 +90,6 @@ def leapfrog(
 
 
 def log_joint_density(position: np.ndarray, momentum: np.ndarray) -> float:
-    """Return log joint density up to an additive constant."""
     return -target_potential(position) - 0.5 * np.dot(momentum, momentum).item()
 
 def draw_momentum_arrow(
@@ -107,7 +102,6 @@ def draw_momentum_arrow(
     color: str,
     zorder: float,
 ) -> None:
-    """Draw one momentum arrow."""
 
     unit_vector = np.asarray(vector, dtype=float)
     unit_vector = unit_vector / np.linalg.norm(unit_vector)
@@ -139,7 +133,6 @@ def draw_angle_arc(
     color: str,
     zorder: float,
 ) -> None:
-    """Draw an angle arc between two vectors."""
 
     vector_a = np.asarray(vector_a, dtype=float)
     vector_b = np.asarray(vector_b, dtype=float)
@@ -166,7 +159,6 @@ def draw_angle_arc(
 
 
 def build_trajectory() -> dict[str, np.ndarray]:
-    """Build the symmetric forward and backward toy NUTS trajectory."""
 
     start_position = np.array([0.0, -1.0], dtype=float)
     start_momentum = np.array([0.8, 0.45], dtype=float)
@@ -255,7 +247,9 @@ def candidate_indices(
     backward_positions: np.ndarray,
     backward_momenta: np.ndarray,
 ) -> tuple[list[int], list[int], int | None]:
-    """Return forward candidates, backward candidates, and selected index."""
+    """
+    Return forward candidates, backward candidates, and selected index.
+    """
 
     forward_indices = list(range(1, len(forward_positions_wiggle) - 1))
     backward_indices = list(range(1, len(backward_positions) - 1))
@@ -319,7 +313,9 @@ def plot_nuts(
     layout: str = "text",
     show: bool = True,
 ) -> plt.Figure:
-    """Generate the NUTS sampler schematic."""
+    """
+    Plot the NUTS sampler schematic.
+    """
 
     trajectory = build_trajectory()
 

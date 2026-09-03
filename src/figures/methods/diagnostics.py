@@ -1,7 +1,5 @@
 """
-Sampling-diagnostics figure.
-
-The figure shows per-bin rank-normalized split R-hat and bulk ESS for either
+Sampling-diagnostics figure. The figure shows per-bin rank-normalized split R-hat and bulk ESS for either
 the emitted spectrum x or the resolution-limited spectrum eta.
 """
 
@@ -29,8 +27,6 @@ from ..style import COLORS, apply_axes_style, figure_size
 
 
 def latex_variable(var: str) -> str:
-    """Return the paper symbol for a diagnostic variable."""
-
     var = str(var).strip().lower()
 
     if var == "x":
@@ -52,7 +48,10 @@ def plot_diagnostics(
     out: str | Path | None = None,
     show: bool = True,
 ) -> plt.Figure:
-    """Create the per-Eg R-hat and bulk-ESS diagnostic figure."""
+    """
+    Create the per-Eg R-hat and bulk-ESS diagnostic figure.
+    
+    """
 
     var = str(var).strip().lower()
     variable_symbol = latex_variable(var)

@@ -1,8 +1,7 @@
 """
 Bayesian unfolding flowchart figure.
-
-Left: Forward model (synthetic data generation)
-Right: Statistical inference (Bayesian)
+Left panel: Forward model (synthetic data generation)
+Right panel: Statistical inference (Bayesian)
 """
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ from ..style import TEXTWIDTH_IN
 
 
 def _box_style(edgecolor: str, linewidth: float = 1.4, padding: float = 0.65) -> dict:
-    """Return the rounded-box style used for text nodes."""
 
     return {
         "boxstyle": f"round,pad={padding}",
@@ -38,8 +36,6 @@ def _add_panel_background(
     facecolor: str,
     edgecolor: str,
 ) -> None:
-    """Add one rounded panel background."""
-
     ax.add_patch(
         patches.FancyBboxPatch(
             (left, bottom),
@@ -62,8 +58,6 @@ def _add_text_box(
     fontsize: float,
     style: dict,
 ):
-    """Add one centered flowchart text box."""
-
     return ax.text(
         x,
         y,
@@ -76,7 +70,6 @@ def _add_text_box(
 
 
 def _patch_box(ax: plt.Axes, text_artist) -> tuple[float, float, float, float, float]:
-    """Return a text box extent in data coordinates."""
     renderer = ax.figure.canvas.get_renderer()
     inverse = ax.transData.inverted()
 
@@ -94,8 +87,6 @@ def _layout_column(
     panel_bottom: float,
     panel_height: float,
 ) -> None:
-    """Pack one vertical column of text boxes inside a panel."""
-
     heights = [_patch_box(ax, text_box)[4] for text_box in boxes]
 
     y_top = panel_bottom + panel_height - 0.20
@@ -119,8 +110,6 @@ def _layout_column(
 
 
 def _align_bottoms(ax: plt.Axes, reference_box, moved_boxes: list, moved_bottom_box) -> None:
-    """Shift one column so the bottom boxes align."""
-
     reference_bottom = _patch_box(ax, reference_box)[1]
     moved_bottom = _patch_box(ax, moved_bottom_box)[1]
     delta = moved_bottom - reference_bottom
@@ -136,8 +125,6 @@ def _align_bottoms(ax: plt.Axes, reference_box, moved_boxes: list, moved_bottom_
 
 
 def _connect_down(ax: plt.Axes, source_box, target_box, x_center: float) -> None:
-    """Draw a vertical arrow between two stacked boxes."""
-
     pad = 0.02
 
     _, source_bottom, _, _, _ = _patch_box(ax, source_box)
@@ -168,8 +155,6 @@ def _connect_column_boxes(
     boxes: list,
     x_center: float,
 ) -> None:
-    """Draw vertical arrows through one column of boxes."""
-
     for source_box, target_box in zip(boxes[:-1], boxes[1:]):
         _connect_down(ax, source_box, target_box, x_center)
 
@@ -182,8 +167,9 @@ def _connect_observed_to_likelihood(
     column_width: float,
     gutter: float,
 ) -> None:
-    """Draw the dashed S-link from observed data to the likelihood box."""
-
+    """
+    Draw the curved arrow showing the input to the likelihood box.
+    """
     gutter_center = left_panel_left + column_width + 0.5 * gutter
     boundary_x = gutter_center - 0.15
 
@@ -250,8 +236,6 @@ def _add_titles(
     left_column_center: float,
     right_column_center: float,
 ) -> None:
-    """Add main and column titles."""
-
     ax.text(
         5.0,
         7.6,
@@ -285,7 +269,6 @@ def _add_flowchart_boxes(
     left_column_center: float,
     right_column_center: float,
 ) -> tuple[list, list]:
-    """Add all flowchart boxes and return left and right columns."""
 
     padding = 0.65
     fontsize_large = 13
@@ -454,7 +437,10 @@ def _add_flowchart_boxes(
 
 
 def plot_flowchart(out: str | Path | None = None, show: bool = True) -> plt.Figure:
-    """Create the Bayesian unfolding flowchart."""
+    """
+    Create the total flowchart figure.
+    
+    """
 
     fig = plt.figure(figsize=(1.25 * TEXTWIDTH_IN, TEXTWIDTH_IN))
     ax = fig.add_axes([0.0, 0.0, 1.0, 1.0])

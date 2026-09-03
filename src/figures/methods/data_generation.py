@@ -1,7 +1,5 @@
 """
-Synthetic-data generation overview figure.
-
-The figure shows the emitted truth matrix, the observed ON-count matrix, and
+Synthetic-data overview figure. The figure shows the emitted truth matrix, the observed ON-count matrix, and
 selected one-dimensional gamma-energy slices from both matrices.
 """
 
@@ -31,7 +29,6 @@ from ..style import COLORS, apply_axes_style, figure_size
 
 
 def _bin_edges(centers: np.ndarray) -> np.ndarray:
-    """Return bin edges from bin centers."""
 
     centers = np.asarray(centers, dtype=float).reshape(-1)
 
@@ -46,8 +43,6 @@ def _bin_edges(centers: np.ndarray) -> np.ndarray:
 
 
 def _chosen_ex_indices(ex_axis: np.ndarray, ex_values: tuple[float, float]) -> list[int]:
-    """Return matrix-row indices for two requested Ex values."""
-
     if len(ex_values) != 2:
         raise ValueError("data_generation uses exactly two Ex slices.")
 
@@ -66,8 +61,6 @@ def _chosen_ex_indices(ex_axis: np.ndarray, ex_values: tuple[float, float]) -> l
 
 
 def _positive_norm(values_a: np.ndarray, values_b: np.ndarray) -> LogNorm:
-    """Return common logarithmic normalization for the two matrix panels."""
-
     positive_values = np.concatenate([values_a.ravel(), values_b.ravel()])
     positive_values = positive_values[
         np.isfinite(positive_values) & (positive_values > 0.0)
@@ -82,8 +75,6 @@ def _positive_norm(values_a: np.ndarray, values_b: np.ndarray) -> LogNorm:
 
 
 def _masked_positive(values: np.ndarray) -> np.ma.MaskedArray:
-    """Mask non-positive or non-finite matrix entries for log plotting."""
-
     return np.ma.masked_where((~np.isfinite(values)) | (values <= 0.0), values)
 
 
@@ -94,11 +85,8 @@ def _set_count_axis(
     top_factor: float = 2.0,
     y_lower: float = -1.0,
 ) -> None:
-    """Apply a per-panel symlog count axis with large label headroom.
-
-    The y limit is set from only the arrays plotted in this panel. This avoids
-    sharing y scales between the two selected Ex cases while still using the
-    common helper used elsewhere in the paper figures.
+    """
+    Apply a per-panel symlog count axis with large label headroom.
     """
 
     _, y_top = set_symlog_y_with_room(
@@ -122,7 +110,9 @@ def _set_count_axis(
 
 
 def _set_compact_symlog_ticks(ax: plt.Axes, y_top: float) -> None:
-    """Use count ticks that avoid crowding 0 and 10^0 on symlog axes."""
+    """
+    Use count ticks that avoid crowding 0 and 10^0 on symlog axes.
+    """
 
     if not np.isfinite(y_top) or y_top <= 0.0:
         return
@@ -145,7 +135,9 @@ def _add_selected_ex_guides(
     selected_indices: list[int],
     colors: list[str],
 ) -> None:
-    """Mark selected Ex rows in the matrix panels."""
+    """
+    Mark selected Ex rows in the matrix panels.
+    """
 
     for color, index in zip(colors, selected_indices):
         ex_low = ex_edges[index]
@@ -179,7 +171,6 @@ def _center_colorbar_under_matrices(
     y_offset: float = 0.052,
     height: float = 0.022,
 ) -> None:
-    """Shorten and center the colorbar below the matrix panels."""
 
     left_position = ax_left.get_position()
     right_position = ax_right.get_position()
@@ -208,7 +199,9 @@ def _plot_slice(
     color: str,
     active_eg_length: int,
 ) -> None:
-    """Plot one selected Ex slice and mark its active Eg boundary."""
+    """
+    Plot one selected Ex slice and mark its active Eg boundary.
+    """
 
     steps(
         ax,
@@ -249,7 +242,9 @@ def plot_data_generation(
     out: str | Path | None = None,
     show: bool = True,
 ) -> plt.Figure:
-    """Create the synthetic-data generation overview figure."""
+    """
+    Create the synthetic-data generation overview figure.
+    """
 
     if mat_path is None:
         mat_path = DATA_DIR / "ExEg_1e8.npz"

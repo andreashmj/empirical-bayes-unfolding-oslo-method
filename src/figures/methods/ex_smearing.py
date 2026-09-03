@@ -1,9 +1,5 @@
 """
-Excitation-energy smearing bias figure.
-
-The plotted quantity is the detected-signal bias induced by Ex smearing,
-    Delta V = (G_in - I) x_true (D G_g),
-using the OMpy right-hand matrix convention.
+Excitation-energy smearing bias figure. The plotted quantity is the detected-signal bias induced by Ex smearing: Delta V = (G_in - I) x_true (D G_g)
 """
 
 from __future__ import annotations
@@ -76,7 +72,9 @@ def build_loader(
 
 
 def ex_smearing_bias(loader: SyntheticDataLoader) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return Delta V, Ex grid, and Eg grid for one loader."""
+    """
+    Return Delta V, Ex grid, and Eg grid.
+    """
 
     x_true = np.asarray(loader.x_true.values, dtype=float)
     D = np.asarray(loader.D.values, dtype=float)
@@ -99,7 +97,6 @@ def ex_smearing_bias(loader: SyntheticDataLoader) -> tuple[np.ndarray, np.ndarra
 
 
 def bias_norm(bias_left: np.ndarray, bias_right: np.ndarray) -> tuple[SymLogNorm, float]:
-    """Return common symmetric symlog normalization and linear threshold."""
 
     absolute_values = np.abs(np.concatenate([bias_left.ravel(), bias_right.ravel()]))
     absolute_values = absolute_values[np.isfinite(absolute_values)]
@@ -125,8 +122,6 @@ def bias_norm(bias_left: np.ndarray, bias_right: np.ndarray) -> tuple[SymLogNorm
 
 
 def add_border(ax: plt.Axes, eg_axis: np.ndarray, ex_axis: np.ndarray) -> None:
-    """Draw a border around one heatmap panel."""
-
     x0 = eg_axis[0].item()
     x1 = eg_axis[-1].item()
     y0 = ex_axis[0].item()
@@ -136,6 +131,8 @@ def add_border(ax: plt.Axes, eg_axis: np.ndarray, ex_axis: np.ndarray) -> None:
         Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, lw=0.9, ec="#4a4a4a",
         )
     )
+
+
 
 
 def plot_ex_smearing(
@@ -149,7 +146,9 @@ def plot_ex_smearing(
     out: str | Path | None = None,
     show: bool = True,
 ) -> plt.Figure:
-    """Create the Ex-smearing bias heatmap figure."""
+    """
+    Create the Ex-smearing bias heatmap figure.
+    """
 
     base_loader = build_loader(
         mat_path=mat_path,

@@ -1,7 +1,5 @@
 """
-Ill-posedness figure.
-
-The figure compares posterior draws in emitted space with the same draws after
+Ill-posedness figure. The figure compares posterior draws in emitted space with the same draws after
 mapping to the resolution-limited space eta = x @ G_g.
 """
 
@@ -28,7 +26,9 @@ from ..style import COLORS, apply_axes_style, figure_size
 
 
 def choose_draw_subset(draws: np.ndarray, max_draws: int, seed: int) -> np.ndarray:
-    """Return a reproducible subset of draws."""
+    """
+    Return a reproducible subset of draws.
+    """
 
     draws = np.asarray(draws, dtype=float)
     n_draws = draws.shape[0]
@@ -51,7 +51,9 @@ def plot_draws(
     linewidth: float,
     alpha: float,
 ) -> None:
-    """Plot posterior draw curves."""
+    """
+    Plot posterior draw curves.
+    """
 
     for draw_index in range(draws.shape[0]):
         steps(
@@ -72,7 +74,9 @@ def set_symlog_axis_with_zero(
     top_factor: float,
     zero_color: str,
 ) -> None:
-    """Set symlog limits and draw the dotted zero baseline."""
+    """
+    Set symlog limits and draw the dotted zero baseline.
+    """
 
     set_symlog_y_with_room(
         ax,
@@ -101,7 +105,9 @@ def plot_ill_posedness(
     symlog_linthresh: float = 5.0,
     show: bool = True,
 ) -> plt.Figure:
-    """Create the emitted-space versus eta-space posterior-draw figure."""
+    """
+    Plot the posterior draws in emitted-space versus eta-space.
+    """
 
     results = UnfoldingResults(repo_path(nc_path), expected_mode="posterior")
 
