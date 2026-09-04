@@ -1,11 +1,5 @@
 """
 Low-statistics prior-dependence figure.
-
-This figure compares the baseline posterior with three alternative
-posterior runs on the absolute resolution-limited count scale. It is intended
-for the low-statistics Ex approx 9.5 MeV prior-dependence check, where scaled
-deviations can visually exaggerate sub-count changes in the weak high-E_gamma
-tail.
 """
 
 from __future__ import annotations
@@ -47,8 +41,6 @@ band_edge_width = 0.32
 
 
 def variable_symbol(var: str) -> str:
-    """Return the paper symbol for a stored variable name."""
-
     var = str(var).strip().lower()
 
     if var == "eta":
@@ -65,8 +57,6 @@ def spectrum_draws_and_truth(
     ex_actual: float,
     var: str,
 ):
-    """Return draws, truth, and paper symbol for eta or x."""
-
     var = str(var).strip().lower()
 
     if var == "eta":
@@ -83,8 +73,6 @@ def check_same_eg_axis(
     candidate_eg: np.ndarray,
     label: str,
 ) -> None:
-    """Check that two Eg grids agree exactly up to floating-point tolerance."""
-
     if reference_eg.shape != candidate_eg.shape:
         raise ValueError(f"Eg grid length mismatch for {label}.")
 
@@ -98,8 +86,6 @@ def posterior_summary(
     var: str,
     mass: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, str]:
-    """Return Eg, posterior mean, envelope, truth, and variable symbol."""
-
     draws, truth_raw, symbol = spectrum_draws_and_truth(results, ex_actual, var)
     eg_axis, mean, lower, upper = global_rank_envelope(draws, mass=mass)
     truth = np.asarray(truth_raw, dtype=float)
@@ -130,7 +116,9 @@ def plot_absolute_comparison_panel(
     show_xlabel: bool,
     show_ylabel: bool,
 ) -> None:
-    """Plot one baseline-vs-alternative posterior panel."""
+    """
+    Plot one baseline-vs-alternative posterior panel.
+    """
 
     fill_step_band(
         ax,
@@ -223,7 +211,9 @@ def plot_low_stat_prior_dependence(
     out: str | Path | None = None,
     show: bool = True,
 ) -> plt.Figure:
-    """Create the low-statistics prior-dependence comparison figure."""
+    """
+    Create the low-statistics prior-dependence comparison figure.
+    """
 
     var = str(var).strip().lower()
     if var not in {"eta", "x"}:

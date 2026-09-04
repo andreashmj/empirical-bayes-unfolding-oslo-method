@@ -1,7 +1,5 @@
 """
-Posterior spectrum figure.
-
-The figure shows the posterior mean and global rank envelope for one
+Posterior spectrum figure. The figure shows the posterior mean and global rank envelope for one
 excitation-energy row, two zoom panels, and the scaled-deviation envelope.
 """
 
@@ -34,7 +32,6 @@ from ..plot_utils import (
 from ..style import COLORS, apply_axes_style, figure_size
 
 def variable_symbol(var: str) -> str:
-    """Return the paper symbol for a stored variable name."""
     var = str(var).strip().lower()
     if var == "eta":
         return r"\boldsymbol{\eta}"
@@ -49,7 +46,7 @@ def spectrum_draws_and_truth(
     ex_actual: float,
     var: str,
 ) -> tuple[xr.DataArray, np.ndarray, str]:
-    """Return draws, truth, and paper symbol for eta or x."""
+ 
     var = str(var).strip().lower()
     if var == "eta":
         return results.eta(ex_actual), results.eta_true(ex_actual), variable_symbol(var)
@@ -63,7 +60,6 @@ def parse_zoom_windows(
     eg_axis: np.ndarray,
     truth: np.ndarray,
 ) -> list[tuple[float, float]]:
-    """Return two zoom windows in keV."""
 
     if zoom is None:
         peak_index = np.nanargmax(truth).item()
@@ -104,7 +100,7 @@ def scaled_deviation_draws(
     upper: np.ndarray,
     eg_axis: np.ndarray,
 ) -> xr.DataArray:
-    """Return scaled-deviation draws."""
+ 
     half_width = np.maximum(0.5 * (upper - lower), 1.0e-12)
     matrix = np.asarray(draws.transpose("sample", "Eg").values, dtype=float)
     scaled = (matrix - truth[None, :]) / half_width[None, :]
@@ -135,7 +131,9 @@ def plot_spectrum_band(
     truth_linewidth: float,
     band_edge_width: float,
 ) -> None:
-    """Plot one spectrum band, mean line, and truth line."""
+    """
+    Plot one spectrum band, mean line, and truth line.
+    """
 
     fill_step_band(
         ax,
@@ -179,7 +177,9 @@ def plot_posterior_spectrum(
     show: bool = True,
     layout: str = "text",
 ) -> plt.Figure:
-    """Create the posterior spectrum figure."""
+    """
+    Create the overall posterior spectrum figure.
+    """
     results = UnfoldingResults(post_nc, expected_mode="posterior")
     
     ex_actual = results.ex_actual(ex)
@@ -358,7 +358,6 @@ def plot_posterior_spectrum(
 
     ax_deviation.set_xlabel(r"Photon energy $E_\gamma$ (MeV)")
     ax_deviation.set_ylabel(r"$S(E_\gamma)$")
-
     apply_axes_style(ax_deviation)
     use_MeV_on_xaxis(ax_deviation)
     add_panel_label(ax_deviation, label="d")

@@ -1,7 +1,5 @@
 """
-Prior spectrum figure.
-
-The figure shows the prior mean, global rank-envelope bands, and the
+Prior spectrum figure. The figure shows the prior mean, global rank-envelope bands, and the
 corresponding truth spectrum for one excitation-energy row.
 """
 
@@ -30,8 +28,6 @@ from ..style import COLORS, apply_axes_style, figure_size
 
 
 def variable_symbol(var: str) -> str:
-    """Return the paper symbol for a stored variable name."""
-
     var = str(var).strip().lower()
 
     if var == "eta":
@@ -48,7 +44,6 @@ def spectrum_draws_and_truth(
     ex_actual: float,
     var: str,
 ):
-    """Return draws, truth, and paper symbol for eta or x."""
     var = str(var).strip().lower()
     if var == "eta":
         return results.eta(ex_actual), results.eta_true(ex_actual), variable_symbol(var)
@@ -69,7 +64,9 @@ def plot_prior_spectrum(
     show: bool = True,
     layout: str = "column",
 ) -> plt.Figure:
-    """Create the prior spectrum figure."""
+    """
+    Create the overall prior spectrum figure.
+    """
 
     results = UnfoldingResults(prior_nc, expected_mode="prior")
 

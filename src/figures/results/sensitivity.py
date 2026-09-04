@@ -1,11 +1,6 @@
 """
-Posterior sensitivity figure.
-
-The figure compares alternative posterior runs with a baseline posterior using
-    S(E_gamma) = (alternative - baseline) / w_base,
-where w_base is the half-width of the baseline posterior rank envelope.
-A baseline-vs-baseline permutation band is shown as a reference.
-Each panel uses its own y-axis limits. The x-axis is shared across panels.
+Posterior sensitivity figure. The figure compares alternative posterior runs with a baseline posterior using
+S(E_gamma) = (alternative - baseline) / w_base
 """
 
 from __future__ import annotations
@@ -34,7 +29,6 @@ from ..style import COLORS, apply_axes_style, figure_size
 
 
 def variable_symbol(var: str) -> str:
-    """Return paper symbol for a stored variable name."""
     var = str(var).strip().lower()
 
     if var == "eta":
@@ -51,7 +45,6 @@ def spectrum_draws(
     ex_actual: float,
     var: str,
 ) -> xr.DataArray:
-    """Return posterior draws for eta or x."""
 
     var = str(var).strip().lower()
 
@@ -65,7 +58,6 @@ def spectrum_draws(
 
 
 def draw_matrix(draws: xr.DataArray) -> np.ndarray:
-    """Return a draw DataArray as a sample-by-Eg matrix."""
     return np.asarray(draws.transpose("sample", "Eg").values, dtype=float)
 
 def rank_envelope_from_matrix(
@@ -73,8 +65,6 @@ def rank_envelope_from_matrix(
     eg_axis: np.ndarray,
     mass: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Return global rank envelope from an array with shape sample by Eg."""
-
     matrix = np.asarray(matrix, dtype=float)
     eg_axis = np.asarray(eg_axis, dtype=float)
 
@@ -90,7 +80,6 @@ def rank_envelope_from_matrix(
 
 
 def format_number(value: float) -> str:
-    """Return compact number formatting for panel-description labels."""
     value = float(value)
 
     if np.isfinite(value) and abs(value - round(value)) < 1.0e-10:
@@ -100,7 +89,6 @@ def format_number(value: float) -> str:
 
 
 def parse_sigma_token(token: str) -> tuple[float, float]:
-    """Parse sigma tokens such as 1.0-3.0, 1.0,3.0, or 1.0:3.0."""
 
     text = str(token).strip()
     text = text.replace("{", "").replace("}", "")
@@ -115,8 +103,6 @@ def parse_sigma_token(token: str) -> tuple[float, float]:
 
 
 def parse_rl_token(token: str) -> int:
-    """Parse an RL-iteration token such as 5 or 500."""
-
     return int(str(token).strip())
 
 
@@ -129,8 +115,6 @@ def build_panel_descriptions(
     rls: list[str] | None,
     title_prefix: str | None,
 ) -> list[str]:
-    """Return panel descriptions for stdout/caption writing."""
-
     if labels is not None:
         if len(labels) != n_panels:
             raise ValueError("labels must have the same length as alt_post_ncs.")
@@ -189,8 +173,6 @@ def paired_matrices(
     alternative_matrix: np.ndarray,
     rng: np.random.Generator,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return baseline and alternative matrices with the same sample count."""
-
     n_baseline = baseline_matrix.shape[0]
     n_alternative = alternative_matrix.shape[0]
     n_samples = min(n_baseline, n_alternative)
@@ -216,8 +198,6 @@ def null_scaled_deviation(
     baseline_half_width: np.ndarray,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """Return baseline-vs-baseline reference scaled deviations."""
-
     n_samples = baseline_matrix.shape[0]
 
     if n_samples < 2:
@@ -236,12 +216,11 @@ def scaled_difference(
     alternative_matrix: np.ndarray,
     baseline_half_width: np.ndarray,
 ) -> np.ndarray:
-    """Return alternative-vs-baseline scaled deviations."""
+
     return (alternative_matrix - baseline_matrix) / baseline_half_width[None, :]
 
 
 def sensitivity_colors(scheme: str) -> tuple[str, str]:
-    """Return alternative band and mean colors for a sensitivity scheme."""
     scheme = str(scheme).strip().lower()
 
     if scheme == "alpha":
@@ -265,8 +244,6 @@ def y_limits_for_scaled_panel(
     reference_levels: list[float],
     padding_fraction: float = 0.05,
 ) -> tuple[float, float]:
-    """Return y limits for one scaled-deviation panel."""
-
     values = [
         null_envelope[1],
         null_envelope[2],
@@ -310,8 +287,6 @@ def panel_grid(
     n_panels: int,
     layout: str,
 ) -> tuple[int, int, str, float, dict]:
-    """Return rows, columns, size layout, height ratio, and GridSpec kwargs."""
-
     layout = str(layout).strip().lower()
     if layout not in {"text", "column"}:
         raise ValueError("layout must be either 'text' or 'column'.")
@@ -404,7 +379,9 @@ def plot_scaled_panel(
     show_ylabel: bool,
     y_limits: tuple[float, float],
 ) -> None:
-    """Plot one sensitivity panel."""
+    """
+    Plot one sensitivity panel.
+    """
 
     fill_step_band(
         ax,
@@ -491,7 +468,6 @@ def plot_scaled_panel(
 
 
 def print_panel_mapping(labels: list[str], tag: str) -> None:
-    """Print panel descriptions to stdout."""
 
     print(f"[{tag}] panel mapping:")
 
@@ -517,7 +493,9 @@ def plot_sensitivity(
     layout: str = "text",
     seed: int | None = 123,
 ) -> plt.Figure:
-    """Create the posterior sensitivity figure."""
+    """
+    Create the overall posterior sensitivity figure.
+    """
 
     if len(alt_post_ncs) == 0:
         raise ValueError("At least one alternative posterior file is required.")

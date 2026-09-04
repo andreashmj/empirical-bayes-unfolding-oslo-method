@@ -1,12 +1,6 @@
 """
-Posterior robustness figure.
-
-The figure compares a small set of robustness posterior runs with a baseline
-posterior using
-    S(E_gamma) = (alternative - baseline) / w_base,
-where w_base is the half-width of the baseline posterior rank envelope.
-A baseline-vs-baseline permutation band is shown as a null reference.
-Each panel gets its own y-axis limits. The x-axis is shared across panels.
+Posterior robustness figure. The figure compares a small set of robustness posterior runs with a baseline
+posterior using  S(E_gamma) = (alternative - baseline) / w_base.
 """
 
 from __future__ import annotations
@@ -39,7 +33,7 @@ def spectrum_draws(
     ex_actual: float,
     var: str,
 ) -> xr.DataArray:
-    """Return posterior draws for eta or x."""
+ 
     var = str(var).strip().lower()
 
     if var == "eta":
@@ -51,7 +45,7 @@ def spectrum_draws(
 
 
 def draw_matrix(draws: xr.DataArray) -> np.ndarray:
-    """Return a draw DataArray as a sample-by-Eg matrix."""
+
     return np.asarray(draws.transpose("sample", "Eg").values, dtype=float)
 
 
@@ -60,8 +54,6 @@ def rank_envelope_from_matrix(
     eg_axis: np.ndarray,
     mass: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Return global rank envelope from an array with shape sample by Eg."""
-
     matrix = np.asarray(matrix, dtype=float)
     eg_axis = np.asarray(eg_axis, dtype=float)
 
@@ -81,8 +73,6 @@ def paired_matrices(
     alternative_matrix: np.ndarray,
     rng: np.random.Generator,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return baseline and alternative matrices with the same sample count."""
-
     n_baseline = baseline_matrix.shape[0]
     n_alternative = alternative_matrix.shape[0]
     n_samples = min(n_baseline, n_alternative)
@@ -108,8 +98,7 @@ def null_scaled_deviation(
     baseline_half_width: np.ndarray,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """Return baseline-vs-baseline null scaled deviations."""
-
+  
     n_samples = baseline_matrix.shape[0]
 
     if n_samples < 2:
@@ -128,7 +117,7 @@ def scaled_difference(
     alternative_matrix: np.ndarray,
     baseline_half_width: np.ndarray,
 ) -> np.ndarray:
-    """Return alternative-vs-baseline scaled deviations."""
+  
     return (alternative_matrix - baseline_matrix) / baseline_half_width[None, :]
 
 def y_limits_for_scaled_panel(
@@ -137,12 +126,7 @@ def y_limits_for_scaled_panel(
     reference_levels: list[float],
     padding_fraction: float = 0.05,
 ) -> tuple[float, float]:
-    """Return y limits for one scaled-deviation panel.
-
-    The null envelope is included in every panel because it is the reference
-    distribution. Only the current alternative envelope is included, so a large
-    robustness effect in one panel does not compress the other panels.
-    """
+  
     values = [
         null_envelope[1],
         null_envelope[2],
@@ -187,8 +171,7 @@ def panel_grid(
     n_panels: int,
     layout: str,
 ) -> tuple[int, int, str, float, dict]:
-    """Return rows, columns, size layout, height ratio, and GridSpec kwargs."""
-
+  
     layout = str(layout).strip().lower()
     if layout not in {"text", "column"}:
         raise ValueError("layout must be either 'text' or 'column'.")
@@ -265,7 +248,9 @@ def plot_scaled_panel(
     show_ylabel: bool,
     y_limits: tuple[float, float],
 ) -> None:
-    """Plot one robustness panel."""
+    """
+    Plot one robustness panel.
+    """
 
     fill_step_band(
         ax,
@@ -346,7 +331,7 @@ def panel_descriptions(
     labels: list[str] | None,
     n_panels: int,
 ) -> list[str]:
-    """Return panel descriptions for stdout/caption writing."""
+ 
     if labels is None:
         return [f"Robustness case {index + 1}" for index in range(n_panels)]
 
@@ -357,7 +342,7 @@ def panel_descriptions(
 
 
 def print_panel_mapping(labels: list[str]) -> None:
-    """Print panel descriptions to stdout."""
+  
     print("[robustness] panel mapping:")
 
     for index, label in enumerate(labels):
@@ -377,7 +362,9 @@ def plot_robustness(
     layout: str = "text",
     seed: int | None = 123,
 ) -> plt.Figure:
-    """Create the posterior robustness figure."""
+    """
+    Create the overall posterior robustness figure.
+    """
 
     if len(alt_post_ncs) == 0:
         raise ValueError("At least one alternative posterior file is required.")
@@ -459,13 +446,13 @@ def plot_robustness(
         )
 
     reference_levels = [0.5, 1.0, 1.5, 2.0]
-
+    
     baseline_band_color = "#9E9E9E"
     baseline_edge_color = "#6E6E6E"
     alternative_band_color = "#5AAE61"
     alternative_mean_color = "#762A83"
     reference_color = COLORS["black"]
-
+    
     n_rows, n_columns, size_layout, height_to_width, grid_kwargs = panel_grid(
         n_panels=n_panels,
         layout=layout,

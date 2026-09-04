@@ -1,7 +1,5 @@
 """
-Model-check figure.
-
-The figure compares prior and posterior predictive checks for observed counts,
+Model-check figure. The figure compares prior and posterior predictive checks for observed counts,
 and folded-signal checks for the expected detected signal.
 """
 
@@ -38,8 +36,6 @@ def rank_envelope_from_array(
     eg_axis: np.ndarray,
     mass: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Return global rank envelope for an array with shape sample by Eg."""
-
     values = np.asarray(values, dtype=float)
 
     data_array = xr.DataArray(
@@ -55,14 +51,11 @@ def rank_envelope_from_array(
 
 
 def draw_matrix(data_array: xr.DataArray) -> np.ndarray:
-    """Return a DataArray with dimensions sample and Eg as a NumPy matrix."""
-
     return np.asarray(data_array.transpose("sample", "Eg").values, dtype=float)
 
 
 def poisson_predictive(rate: xr.DataArray, rng: np.random.Generator) -> np.ndarray:
-    """Draw Poisson predictive counts from non-negative rate draws."""
-
+ 
     rate_values = draw_matrix(rate)
     rate_values = np.clip(rate_values, 0.0, None)
 
@@ -75,8 +68,6 @@ def scaled_deviation(
     lower: np.ndarray,
     upper: np.ndarray,
 ) -> np.ndarray:
-    """Return scaled deviations using half-width of a posterior envelope."""
-
     half_width = np.maximum(0.5 * (upper - lower), 1.0e-12)
     return (values - reference[None, :]) / half_width[None, :]
 
@@ -86,8 +77,6 @@ def common_eg_axis(
     posterior_results: UnfoldingResults,
     ex_actual: float,
 ) -> np.ndarray:
-    """Return common Eg axis after checking prior/posterior compatibility."""
-
     if prior_results.n_eg(ex_actual) != posterior_results.n_eg(ex_actual):
         raise ValueError("Eg length mismatch between prior and posterior result files.")
 
@@ -107,8 +96,6 @@ def set_count_axis_pair(
     y_lower: float = -1.0,
     zero_color: str = COLORS["black"],
 ) -> None:
-    """Set a shared symlog count axis for one prior/posterior panel pair."""
-
     if not axes:
         return
 
@@ -166,7 +153,9 @@ def plot_band_with_reference(
     show_y_ticklabels: bool = True,
     box_label: bool = False,
 ) -> None:
-    """Plot one predictive/rate band panel."""
+    """
+    Plot one predictive/rate band panel.
+    """
 
     fill_step_band(
         ax,
@@ -226,7 +215,9 @@ def plot_scaled_deviation(
     label: str,
     xlabel: bool = False,
 ) -> None:
-    """Plot one scaled-deviation panel."""
+    """
+    Plot one scaled-deviation panel.
+    """
 
     fill_step_band(
         ax,
@@ -269,7 +260,6 @@ def plot_scaled_deviation(
 
 
 def set_common_xticks(axes: list[plt.Axes], eg_axis: np.ndarray) -> None:
-    """Apply a compact common tick set to all x axes."""
 
     x_right = np.max(eg_axis).item()
     ticks = [tick for tick in [0, 1000, 2000, 3000, 4000] if tick <= x_right]
@@ -292,7 +282,9 @@ def plot_model_checks(
     layout: str = "text",
     symlog_linthresh: float = 5.0,
 ) -> plt.Figure:
-    """Create the model-check figure."""
+    """
+    Create the overall model-check figure.
+    """
 
     prior_results = UnfoldingResults(prior_nc, expected_mode="prior")
     posterior_results = UnfoldingResults(post_nc, expected_mode="posterior")
@@ -698,8 +690,7 @@ def plot_model_checks(
         Line2D([0], [0], color=dev_mean, lw=mean_linewidth),
     )
     reference_handle = Line2D(
-        [0],
-        [0],
+        [0], [0],
         color=reference_color,
         lw=reference_linewidth,
         ls="--",

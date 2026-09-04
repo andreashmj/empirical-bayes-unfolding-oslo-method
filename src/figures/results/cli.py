@@ -1,5 +1,5 @@
 """
-Command-line dispatcher for result figures.
+CLI parser arguments for creating the results figures.
 """
 
 from __future__ import annotations
@@ -8,8 +8,6 @@ from pathlib import Path
 from ...paths import repo_path
 
 def repo_path_or_none(path: str | None) -> Path | None:
-    """Return repo_path(path), or None when no output path is given."""
-
     if path is None:
         return None
 
@@ -17,8 +15,6 @@ def repo_path_or_none(path: str | None) -> Path | None:
 
 
 def add_common_figure_args(parser: argparse.ArgumentParser) -> None:
-    """Add arguments shared by result-figure commands."""
-
     parser.add_argument("--layout", choices=["text", "column"], default="text")
     parser.add_argument("--out", default=None)
     parser.add_argument("--no-show", dest="show", action="store_false")
@@ -26,7 +22,6 @@ def add_common_figure_args(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the result-figure command-line parser."""
     parser = argparse.ArgumentParser(
         description="Generate result figures for the unfolding article."
     )
@@ -161,8 +156,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_command(args: argparse.Namespace) -> None:
-    """Dispatch one result-figure command."""
-
     if args.cmd == "prior-spectrum":
         from .prior_spectrum import plot_prior_spectrum
 
@@ -312,8 +305,6 @@ def run_command(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Run the result-figure CLI."""
-
     parser = build_parser()
     args = parser.parse_args(argv)
     run_command(args)

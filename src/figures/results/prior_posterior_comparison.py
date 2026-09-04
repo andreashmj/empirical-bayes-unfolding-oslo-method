@@ -1,8 +1,5 @@
 """
-Prior-posterior comparison figure.
-
-The figure overlays prior and posterior means with their global rank-envelope
-bands, together with the corresponding truth spectrum.
+Prior-posterior comparison figure. The figure overlays prior and posterior means with their global rank-envelope bands, together with the corresponding truth spectrum.
 """
 
 from __future__ import annotations
@@ -30,7 +27,6 @@ from ..plot_utils import (
 from ..style import COLORS, apply_axes_style, figure_size
 
 def variable_symbol(var: str) -> str:
-    """Return the paper symbol for a stored variable name."""
     var = str(var).strip().lower()
 
     if var == "eta":
@@ -46,7 +42,6 @@ def spectrum_draws_and_truth(
     ex_actual: float,
     var: str,
 ):
-    """Return draws, truth, and paper symbol for eta or x."""
     var = str(var).strip().lower()
     if var == "eta":
         return results.eta(ex_actual), results.eta_true(ex_actual), variable_symbol(var)
@@ -61,7 +56,7 @@ def common_eg_axis(
     posterior_results: UnfoldingResults,
     ex_actual: float,
 ) -> np.ndarray:
-    """Return common Eg axis after checking prior/posterior compatibility."""
+ 
     if prior_results.n_eg(ex_actual) != posterior_results.n_eg(ex_actual):
         raise ValueError("Eg length mismatch between prior and posterior result files.")
 
@@ -79,7 +74,6 @@ def check_envelope_axis(
     envelope_eg: np.ndarray,
     label: str,
 ) -> None:
-    """Check that an envelope Eg grid matches the reference grid."""
 
     if not np.allclose(reference_eg, envelope_eg, rtol=0.0, atol=1.0e-12):
         raise ValueError(f"Envelope Eg grid mismatch for {label}.")
@@ -95,7 +89,9 @@ def plot_prior_posterior_comparison(
     show: bool = True,
     layout: str = "column",
 ) -> plt.Figure:
-    """Create the prior-posterior comparison figure."""
+    """
+    Create the prior-posterior comparison figure.
+    """
 
     layout = str(layout).strip().lower()
     if layout not in {"text", "column"}:
@@ -151,8 +147,7 @@ def plot_prior_posterior_comparison(
     truth_linewidth = 0.45
     band_edge_width = 0.35
 
-    # This is a one-column paper figure. Keep the size fixed even though the
-    # shared CLI passes a generic layout argument.
+    # This is a one-column paper figure.
     size = figure_size("column", height_to_width=0.90)
     fig = plt.figure(figsize=size.as_tuple(), constrained_layout=False)
 

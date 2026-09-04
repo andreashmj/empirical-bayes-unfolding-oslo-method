@@ -1,10 +1,5 @@
 """
-Bayesian-versus-RMLE comparison figure.
-
-The figure compares one Bayesian posterior result with one OMpy RMLE summary
-for the same excitation-energy row. The RMLE summary is expected to contain the
-point estimate and bootstrap confidence band written by
-``src.frequentist.run_rmle_on_synthetic``.
+Figure comparing the Bayesian versus RMLE results.
 """
 
 from __future__ import annotations
@@ -39,8 +34,6 @@ from ..style import COLORS, apply_axes_style, figure_size
 
 
 def variable_symbol(var: str) -> str:
-    """Return the paper symbol for a stored variable name."""
-
     var = str(var).strip().lower()
     if var == "eta":
         return r"\boldsymbol{\eta}"
@@ -52,8 +45,6 @@ def variable_symbol(var: str) -> str:
 
 
 def frequentist_key(var: str) -> str:
-    """Return the prefix used in RMLE summary files."""
-
     var = str(var).strip().lower()
     if var == "x":
         return "mu"
@@ -67,8 +58,6 @@ def bayesian_draws_and_truth(
     ex_actual: float,
     var: str,
 ) -> tuple[xr.DataArray, np.ndarray, str]:
-    """Return Bayesian draws, truth vector, and paper symbol."""
-
     var = str(var).strip().lower()
     if var == "eta":
         return results.eta(ex_actual), results.eta_true(ex_actual), variable_symbol(var)
@@ -80,14 +69,10 @@ def bayesian_draws_and_truth(
 
 
 def draw_matrix(draws: xr.DataArray) -> np.ndarray:
-    """Return a draw DataArray as a sample-by-Eg matrix."""
-
     return np.asarray(draws.transpose("sample", "Eg").values, dtype=float)
 
 
 def npz_get(npz: np.lib.npyio.NpzFile, keys: Sequence[str]) -> np.ndarray | None:
-    """Return the first matching npz array, with case-insensitive fallback."""
-
     names = set(npz.files)
     for key in keys:
         if key in names:
@@ -103,7 +88,9 @@ def npz_get(npz: np.lib.npyio.NpzFile, keys: Sequence[str]) -> np.ndarray | None
 
 
 def find_ex_dir(frequentist_root: Path, ex: float) -> Path:
-    """Find the RMLE output directory for one excitation-energy row."""
+    """
+    Find the RMLE output directory for one Ex row.
+    """
 
     ex_int = round(float(ex))
     candidates = [
@@ -145,8 +132,6 @@ def read_frequentist_summary(
     var: str,
     target_eg: np.ndarray,
 ) -> dict:
-    """Read one RMLE summary file and check grid compatibility."""
-
     key = frequentist_key(var)
     ex_dir = find_ex_dir(Path(frequentist_root), ex)
     summary_path = ex_dir / "summary.npz"
@@ -192,8 +177,6 @@ def rank_envelope_from_matrix(
     eg_axis: np.ndarray,
     mass: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Return global rank envelope from a sample-by-Eg matrix."""
-
     matrix = np.asarray(matrix, dtype=float)
     data_array = xr.DataArray(
         matrix,
@@ -204,8 +187,6 @@ def rank_envelope_from_matrix(
 
 
 def default_zoom_windows(eg_axis: np.ndarray) -> list[tuple[float, float]]:
-    """Return low-, mid-, and high-energy zoom windows."""
-
     lower = float(np.nanmin(eg_axis))
     upper = float(np.nanmax(eg_axis))
     span = max(upper - lower, 1.0)
@@ -222,8 +203,6 @@ def parse_zoom_windows(
     zoom3: Sequence[float] | None,
     eg_axis: np.ndarray,
 ) -> list[tuple[float, float]]:
-    """Return three zoom windows in keV."""
-
     windows = []
     for input_window, default_window in zip(
         [zoom1, zoom2, zoom3],
@@ -242,8 +221,6 @@ def parse_zoom_windows(
 
 
 def mask_in_window(eg_axis: np.ndarray, window: tuple[float, float]) -> np.ndarray:
-    """Return an Eg-axis mask for one zoom window."""
-
     lower, upper = window
     return (eg_axis >= lower) & (eg_axis <= upper)
 
@@ -254,8 +231,6 @@ def scaled_deviation_matrix(
     lower: np.ndarray,
     upper: np.ndarray,
 ) -> np.ndarray:
-    """Return scaled-deviation draws using an envelope half-width."""
-
     half_width = np.maximum(0.5 * (upper - lower), 1.0e-12)
     return (matrix - truth[None, :]) / half_width[None, :]
 
@@ -266,8 +241,6 @@ def scaled_deviation_envelope_from_band(
     lower: np.ndarray,
     upper: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return scaled-deviation center and band from a precomputed band."""
-
     half_width = np.maximum(0.5 * (upper - lower), 1.0e-12)
     return (
         (center - truth) / half_width,
@@ -281,7 +254,6 @@ def scaled_y_limits(
     minimum_abs: float = 2.0,
     padding_fraction: float = 0.05,
 ) -> tuple[float, float]:
-    """Return common y-limits for scaled-deviation panels."""
 
     finite = []
     for values in arrays:
@@ -411,7 +383,10 @@ def plot_bayes_frequentist_comparison(
     out: str | Path | None = None,
     show: bool = True,
 ) -> plt.Figure:
-    """Create the Bayesian-versus-RMLE comparison figure."""
+    """
+    Create the Bayesian-versus-RMLE comparison figure.
+    
+    """
 
     var = str(var).strip().lower()
     if var not in {"eta", "x", "nu"}:
@@ -549,8 +524,8 @@ def plot_bayes_frequentist_comparison(
 
     zoom_axes: list[plt.Axes] = []
     for panel_index, (window, mask, label, y_limits) in enumerate(
-        zip(windows, masks, ["b", "c", "d"], zoom_limits)
-    ):
+        zip(windows, masks, ["b", "c", "d"], zoom_limits)):
+        
         ax_zoom = fig.add_subplot(grid[1, panel_index])
         zoom_axes.append(ax_zoom)
         lower, upper = window
@@ -682,7 +657,9 @@ def plot_bayes_frequentist_comparison(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the standalone command-line parser."""
+    """
+    Create the CLI parser.
+    """
 
     parser = argparse.ArgumentParser(
         description="Create a Bayesian-versus-RMLE comparison figure."
@@ -703,8 +680,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Run the standalone command-line interface."""
-
     parser = build_parser()
     args = parser.parse_args(argv)
 

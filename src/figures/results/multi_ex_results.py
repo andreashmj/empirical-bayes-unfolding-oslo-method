@@ -1,12 +1,5 @@
 """
-Multi-ex posterior results figure.
-
-The figure shows posterior spectra for several excitation-energy rows and the
-corresponding scaled deviations relative to truth.
-
-Each excitation-energy column has its own x axis and y axes.  Within a column,
-the spectrum panel and scaled-deviation panel share the x axis.  The spectrum
-panels use a linear count scale, not symlog.
+Multi-ex posterior results figure. The figure shows posterior spectra for several excitation-energy rows and the corresponding scaled deviations relative to truth.
 """
 
 from __future__ import annotations
@@ -37,8 +30,6 @@ from ..style import COLORS, apply_axes_style, figure_size
 
 
 def variable_symbol(var: str) -> str:
-    """Return the paper symbol for a stored variable name."""
-
     var = str(var).strip().lower()
 
     if var == "eta":
@@ -55,7 +46,6 @@ def spectrum_draws_and_truth(
     ex_actual: float,
     var: str,
 ) -> tuple[xr.DataArray, np.ndarray, str]:
-    """Return draws, truth, and paper symbol for eta or x."""
 
     var = str(var).strip().lower()
 
@@ -75,7 +65,6 @@ def scaled_deviation_draws(
     upper: np.ndarray,
     eg_axis: np.ndarray,
 ) -> xr.DataArray:
-    """Return scaled-deviation draws."""
 
     half_width = np.maximum(0.5 * (upper - lower), 1.0e-12)
     matrix = np.asarray(draws.transpose("sample", "Eg").values, dtype=float)
@@ -99,8 +88,6 @@ def make_panel_data(
     var: str,
     mass: float,
 ) -> tuple[list[dict], str]:
-    """Build data dictionaries for all excitation-energy panels."""
-
     panels = []
     symbol = variable_symbol(var)
 
@@ -149,7 +136,6 @@ def make_panel_data(
 
 
 def x_limits_for_axis(eg_axis: np.ndarray) -> tuple[float, float]:
-    """Return x limits for one excitation-energy column."""
 
     eg_axis = np.asarray(eg_axis, dtype=float)
     finite = eg_axis[np.isfinite(eg_axis)]
@@ -166,7 +152,6 @@ def x_limits_for_axis(eg_axis: np.ndarray) -> tuple[float, float]:
 
 
 def ticks_for_axis(eg_axis: np.ndarray) -> list[float]:
-    """Return compact x ticks in keV for one excitation-energy column."""
 
     _, x_right = x_limits_for_axis(eg_axis)
 
@@ -190,8 +175,6 @@ def set_column_x_axis(
     axes: list[plt.Axes],
     eg_axis: np.ndarray,
 ) -> None:
-    """Set x limits and ticks for one excitation-energy column."""
-
     x_limits = x_limits_for_axis(eg_axis)
     ticks = ticks_for_axis(eg_axis)
 
@@ -209,7 +192,6 @@ def scaled_deviation_y_limits_for_panel(
     minimum_abs: float = 2.0,
     padding_fraction: float = 0.05,
 ) -> tuple[float, float]:
-    """Return y limits for one scaled-deviation panel."""
 
     values = [
         panel["scaled_mean"],
@@ -235,10 +217,8 @@ def scaled_deviation_y_limits_for_panel(
     upper = 1.18 * max(np.max(all_values).item(), float(minimum_abs), 0.0)
 
     span = upper - lower
-
     if not np.isfinite(span) or span <= 0.0:
         return -float(minimum_abs), float(minimum_abs)
-
     padding = float(padding_fraction) * span
     return lower - padding, upper + padding
 
@@ -257,7 +237,9 @@ def plot_spectrum_panel(
     truth_linewidth: float,
     edge_linewidth: float,
 ) -> None:
-    """Plot one posterior spectrum panel on a linear count scale."""
+    """
+    Plot one posterior spectrum panel on a linear count scale.
+    """
 
     fill_step_band(
         ax,
@@ -321,7 +303,9 @@ def plot_scaled_panel(
     edge_linewidth: float,
     zero_linewidth: float,
 ) -> None:
-    """Plot one scaled-deviation panel."""
+    """
+    Plot one scaled-deviation panel
+    """
 
     fill_step_band(
         ax,
@@ -379,7 +363,9 @@ def plot_multi_ex_results(
     show: bool = True,
     layout: str = "text",
 ) -> plt.Figure:
-    """Create the multi-ex posterior results figure."""
+    """
+    Create the overall multi-ex posterior results figure.
+    """
 
     results = UnfoldingResults(post_nc, expected_mode="posterior")
 
