@@ -1,6 +1,5 @@
 """
-Richardson--Lucy reference used for the empirical prior. 
-The ON counts are used directly and a fixed background term is used in the forward model
+Richardson--Lucy reference used for the empirical prior. The ON counts are used directly and a fixed background term is used in the forward model
     expected_on = x @ response_matrix + background_reference
 """
 
@@ -139,8 +138,6 @@ def eta_relative_change(
     eta_iterates: np.ndarray,
     window: int = ITERATION_WINDOW,
 ) -> np.ndarray:
-    """
-    Return the relative change of eta_RL over a fixed iteration window."""
 
     eta_iterates = require_finite_array(
         eta_iterates,
@@ -158,7 +155,7 @@ def eta_relative_change(
             eta_iterates[iteration] - eta_iterates[iteration - window]
         )
         denominator = np.linalg.norm(eta_iterates[iteration]) + EPS
-        change[iteration] = numerator / denominator
+        change[iteration] = numerator
 
     return change
 
@@ -215,14 +212,11 @@ def eta_resampling_noise_level(
         delta2 = eta_iterates - mean_eta
         m2_eta += delta * delta2
 
-    if mean_eta is None or m2_eta is None:
-        raise RuntimeError("No resampling histories were generated.")
-
     eta_variance = m2_eta / float(n_resamples - 1)
 
     numerator = np.sqrt(np.sum(eta_variance, axis=1))
     denominator = np.linalg.norm(mean_eta, axis=1) + EPS
-    noise_level = numerator / denominator
+    noise_level = np.sqrt(np.sum(eta_variance, axis=1))
     noise_level[~np.isfinite(noise_level)] = np.nan
 
     return noise_level
@@ -326,9 +320,6 @@ def rl_reference(
     background_reference: np.ndarray | None = None,
     rl_iterations: int | str = "auto",
 ) -> tuple[np.ndarray, dict]:
-    """
-    Return RL reference spectrum and metadata. 
-    """
 
     if isinstance(rl_iterations, str):
         rl_iterations = rl_iterations.strip().lower()

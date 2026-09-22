@@ -27,7 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="cmd", required=True)
-
+    
+    
     prior_spectrum = subparsers.add_parser("prior-spectrum",
         help="Prior mean and global rank-envelope bands for one excitation-energy row.",
     )
@@ -38,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     prior_spectrum.add_argument("--inner-mass", type=float, default=0.75)
     prior_spectrum.add_argument("--symlog-linthresh", type=float, default=5.0)
     add_common_figure_args(prior_spectrum)
+    
 
     posterior_spectrum = subparsers.add_parser("posterior-spectrum",
         help="Posterior spectrum, zoom panels, and scaled deviation.",
@@ -52,6 +54,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     posterior_spectrum.add_argument("--symlog-linthresh", type=float, default=5.0)
     add_common_figure_args(posterior_spectrum)
+    
+    
+    
 
     prior_posterior = subparsers.add_parser("prior-posterior",
         help="Prior and posterior means with global rank-envelope bands.",
@@ -63,6 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
     prior_posterior.add_argument("--mass", type=float, default=0.95)
     prior_posterior.add_argument("--symlog-linthresh", type=float, default=5.0)
     add_common_figure_args(prior_posterior)
+    
+    
 
     model_checks = subparsers.add_parser("model-checks",
         help="Prior/posterior model checks in observed and folded-signal space.",
@@ -73,6 +80,8 @@ def build_parser() -> argparse.ArgumentParser:
     model_checks.add_argument("--mass", type=float, default=0.95)
     model_checks.add_argument("--seed", type=int, default=123)
     add_common_figure_args(model_checks)
+    
+    
 
     multi_ex = subparsers.add_parser("multi-ex",
         help="Posterior spectra and scaled deviations for several excitation-energy rows.",
@@ -82,6 +91,8 @@ def build_parser() -> argparse.ArgumentParser:
     multi_ex.add_argument("--var", choices=["eta", "x"], default="eta")
     multi_ex.add_argument("--mass", type=float, default=0.95)
     add_common_figure_args(multi_ex)
+    
+    
 
     sensitivity = subparsers.add_parser("sensitivity",
         help="Posterior sensitivity comparison against a baseline run.",
@@ -102,6 +113,8 @@ def build_parser() -> argparse.ArgumentParser:
     sensitivity.add_argument("--mass", type=float, default=0.95)
     sensitivity.add_argument("--seed", type=int, default=123)
     add_common_figure_args(sensitivity)
+    
+
 
     low_stat_prior_dependence = subparsers.add_parser("low-stat-prior-dependence",
         help=(
@@ -120,6 +133,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
     )
     low_stat_prior_dependence.set_defaults(show=True)
+    
+    
+    
 
     robustness = subparsers.add_parser("robustness",
         help="Posterior robustness comparison against a baseline run.",
@@ -132,16 +148,15 @@ def build_parser() -> argparse.ArgumentParser:
     robustness.add_argument("--mass", type=float, default=0.95)
     robustness.add_argument("--seed", type=int, default=123)
     add_common_figure_args(robustness)
+    
 
     bayes_frequentist = subparsers.add_parser("bayes-frequentist",
         help="Bayesian posterior versus frequentist RMLE result.",
     )
-    bayes_frequentist.add_argument("--bayes-nc",
-        required=True,
+    bayes_frequentist.add_argument("--bayes-nc", required=True,
         help="Path to Bayesian posterior draws.nc.",
     )
-    bayes_frequentist.add_argument("--freq-dir",
-        required=True,
+    bayes_frequentist.add_argument("--freq-dir", required=True,
         help="Frequentist output root containing Ex*/summary.npz.",
     )
     bayes_frequentist.add_argument("--ex", type=float, required=True)
@@ -151,11 +166,34 @@ def build_parser() -> argparse.ArgumentParser:
     bayes_frequentist.add_argument("--zoom2", nargs=2, type=float, default=None)
     bayes_frequentist.add_argument("--zoom3", nargs=2, type=float, default=None)
     add_common_figure_args(bayes_frequentist)
+    
+    
+    
+    ex_smearing = subparsers.add_parser(
+        "ex-smearing-posterior",
+        help="Posterior comparison for data generated with Ex smearing.",
+    )
+    ex_smearing.add_argument("--left-nc", required=True)
+    ex_smearing.add_argument("--right-nc", required=True)
+    ex_smearing.add_argument("--ex", type=float, default=4000.0)
+    ex_smearing.add_argument("--out", default=None)
+    ex_smearing.add_argument("--no-show", dest="show", action="store_false")
+    ex_smearing.set_defaults(show=True)
+
+    exp_28si = subparsers.add_parser(
+        "experimental-28si",
+        help="Experimental 28Si comparison between Bayes, RMLE and iterative unfolding.",
+    )
+    exp_28si.add_argument("--config", required=True)
+    exp_28si.add_argument("--out", default=None)
+    exp_28si.add_argument("--no-show", dest="show", action="store_false")
+    exp_28si.set_defaults(show=True)
 
     return parser
 
 
 def run_command(args: argparse.Namespace) -> None:
+
     if args.cmd == "prior-spectrum":
         from .prior_spectrum import plot_prior_spectrum
 
@@ -296,6 +334,27 @@ def run_command(args: argparse.Namespace) -> None:
             zoom2=args.zoom2,
             zoom3=args.zoom3,
             layout=args.layout,
+            out=repo_path_or_none(args.out),
+            show=bool(args.show),
+        )
+        
+        
+    elif args.cmd == "ex-smearing-posterior":
+        from .ex_smearing_posterior_comparison import plot_ex_smearing_posterior_comparison
+
+        plot_ex_smearing_posterior_comparison(
+            left_nc=repo_path(args.left_nc),
+            right_nc=repo_path(args.right_nc),
+            ex=args.ex,
+            out=repo_path_or_none(args.out),
+            show=bool(args.show),
+        )
+
+    elif args.cmd == "experimental-28si":
+        from .experimental_method_comparison import plot_experimental_method_comparison
+
+        plot_experimental_method_comparison(
+            config_path=repo_path(args.config),
             out=repo_path_or_none(args.out),
             show=bool(args.show),
         )

@@ -13,8 +13,6 @@ from .ex_smearing import plot_ex_smearing
 from .flowchart import plot_flowchart
 from .data_generation import plot_data_generation
 from .ill_posedness import plot_ill_posedness
-from .nuts import plot_nuts
-from .prior_draws import plot_prior_draws
 
 
 def repo_path_or_none(path: str | None) -> Path | None:
@@ -48,15 +46,6 @@ def build_parser() -> argparse.ArgumentParser:
     ill_posedness.add_argument("--symlog-linthresh", type=float, default=5.0)
     add_common_figure_args(ill_posedness)
 
-    prior_draws = subparsers.add_parser("prior-draws",
-        help="Prior draws in eta-space from a prior draws.nc file.",
-    )
-    prior_draws.add_argument("nc", help="Path to prior draws.nc.")
-    prior_draws.add_argument("--ex", type=float, default=None)
-    prior_draws.add_argument("--max-draws", type=int, default=250)
-    prior_draws.add_argument("--seed", type=int, default=123)
-    prior_draws.add_argument("--symlog-linthresh", type=float, default=5.0)
-    add_common_figure_args(prior_draws)
 
     ex_smearing = subparsers.add_parser("ex-smearing",
         help="Excitation-energy smearing bias heatmaps.",
@@ -119,11 +108,6 @@ def build_parser() -> argparse.ArgumentParser:
     diagnostics.add_argument("--no-truth", action="store_true")
     add_common_figure_args(diagnostics)
 
-    nuts = subparsers.add_parser("nuts",
-        help="NUTS tree-expansion schematic.",
-    )
-    add_common_figure_args(nuts)
-
     flowchart = subparsers.add_parser("flowchart",
         help="Bayesian unfolding flowchart schematic.",
     )
@@ -142,16 +126,6 @@ def run_command(args: argparse.Namespace) -> None:
             layout=args.layout,
             out=repo_path_or_none(args.out),
             symlog_linthresh=args.symlog_linthresh,
-            show=bool(args.show),
-        )
-    elif args.cmd == "prior-draws":
-        plot_prior_draws(
-            repo_path(args.nc),
-            ex=args.ex,
-            max_draws=args.max_draws,
-            seed=args.seed,
-            symlog_linthresh=args.symlog_linthresh,
-            out=repo_path_or_none(args.out),
             show=bool(args.show),
         )
 
@@ -197,13 +171,6 @@ def run_command(args: argparse.Namespace) -> None:
             show_truth=(not args.no_truth),
             layout=args.layout,
             out=repo_path_or_none(args.out),
-            show=bool(args.show),
-        )
-
-    elif args.cmd == "nuts":
-        plot_nuts(
-            out=repo_path_or_none(args.out),
-            layout=args.layout,
             show=bool(args.show),
         )
 

@@ -41,6 +41,7 @@ from .paths import repo_path
 from .prior.factory import make_prior
 from .pymc_unfolding import PyMCUnfolder
 from .synthetic_data import SyntheticDataLoader
+from .experimental_data import ExperimentalDataLoader
 
 # TODO: 
 # - Structure the code so that unfolding for different Ex bins can be run in parallel
@@ -326,7 +327,7 @@ class UnfoldManager:
     
     """
 
-    def __init__(self, data_loader: SyntheticDataLoader, config: argparse.Namespace) -> None:
+    def __init__(self, data_loader, config: argparse.Namespace) -> None:
         self.data_loader = data_loader
         self.config = config
 
@@ -340,7 +341,10 @@ class UnfoldManager:
         self.n_off_matrix = data_loader.n_off if self.include_background else None
         self.eg_axis = data_loader.Eg
         self.ex_axis = data_loader.Ex
-        self.x_true_matrix = data_loader.x_true
+        
+        
+        self.has_truth = bool(getattr(data_loader, "has_truth", True))
+        self.x_true_matrix = data_loader.x_true if self.has_truth else None
 
         if self.include_background:
             self.background_model_kind = str(config.background_model.kind).strip()
@@ -536,13 +540,16 @@ class UnfoldManager:
             background_b0=background_b0,
         )
 
-        x_true = require_finite_array(
-            self.x_true_matrix.iloc[ex_index, active_eg_slice].values,
-            "x_true",
-            ndim=1,
-            nonnegative=True,
-        )
-        self.x_true_by_ex.append(x_true)
+        if self.has_truth:
+            x_true = require_finite_array(
+                self.x_true_matrix.iloc[ex_index, active_eg_slice].values,
+                "x_true",
+                ndim=1,
+                nonnegative=True,
+            )
+            self.x_true_by_ex.append(x_true)
+        else:
+            self.x_true_by_ex.append(None)
 
         D_cut, G_g_cut = self.response_unfold.specialize_like(n_cut)
 
@@ -909,22 +916,38 @@ def main() -> None:
 
     cfg_dict = load_run_config(str(repo_path(cli.config)))
     config = dict_to_namespace(cfg_dict)
-
-    loader = SyntheticDataLoader(
-        mat_path=config.mat_path,
-        response_db=config.response_db,
-        rebin_factors=tuple(config.rebin_factors),
-        mat_scale=config.mat_scale,
-        lower_eg_cut=config.lower_eg_cut,
-        include_background=config.include_background,
-        rng_seed=config.rng_seed,
-        sigma_eg=config.sigma_eg_gen,
-        bg_fraction=config.bg_fraction,
-        bg_flat_fraction=config.bg_flat_fraction,
-        eg_tail_mass=config.eg_tail_mass,
-        include_ex_smearing=config.include_ex_smearing,
-        fwhm_ex_kev=config.fwhm_ex_kev,
-    )
+    
+    dataset_kind = str(getattr(config, "dataset_kind", "synthetic")).strip().lower()
+    
+    if dataset_kind == "experimental":
+        loader = ExperimentalDataLoader(
+            prompt_path=config.prompt_path,
+            background_path=getattr(config, "background_path", None),
+            response_db=config.response_db,
+            rebin_factors=tuple(config.rebin_factors),
+            lower_eg_cut=config.lower_eg_cut,
+            include_background=config.include_background,
+            sigma_eg=getattr(config, "sigma_eg_unfold", getattr(config, "sigma_eg_gen", "30keV")),
+            eg_margin_kev=getattr(config, "eg_margin_kev", 200.0),
+        )
+    elif dataset_kind == "synthetic":
+        loader = SyntheticDataLoader(
+            mat_path=config.mat_path,
+            response_db=config.response_db,
+            rebin_factors=tuple(config.rebin_factors),
+            mat_scale=config.mat_scale,
+            lower_eg_cut=config.lower_eg_cut,
+            include_background=config.include_background,
+            rng_seed=config.rng_seed,
+            sigma_eg=config.sigma_eg_gen,
+            bg_fraction=config.bg_fraction,
+            bg_flat_fraction=config.bg_flat_fraction,
+            eg_tail_mass=config.eg_tail_mass,
+            include_ex_smearing=config.include_ex_smearing,
+            fwhm_ex_kev=config.fwhm_ex_kev,
+        )
+    else:
+        raise ValueError("dataset_kind must be synthetic or experimental.")
 
     manager = UnfoldManager(loader, config=config)
     manager.run_unfolding()
