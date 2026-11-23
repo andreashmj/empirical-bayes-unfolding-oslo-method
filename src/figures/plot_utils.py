@@ -18,7 +18,6 @@ from .style import PANEL_LABEL_SIZE
 
 
 def rgba(color: str, alpha: float) -> tuple[float, float, float, float]:
-    """RGBA tuple from a color and alpha."""
 
     red, green, blue, _ = to_rgba(color)
     return (red, green, blue, float(alpha))
@@ -41,10 +40,6 @@ def steps(
     zorder: float = 3.0,
     rasterized: bool = False,
 ) -> Line2D:
-    """
-    Plot a step-mid curve and return the line object.
-    
-    """
 
     line, = ax.plot(
         x,
@@ -74,9 +69,6 @@ def fill_step_band(
     zorder: float = 2.0,
     rasterized: bool = True,
 ):
-    """
-    Draw a step-mid uncertainty band.
-    """
 
     if edgecolor is None:
         edgecolor = facecolor
@@ -107,9 +99,7 @@ def add_top_legend(
     fontsize: float | None = None,
     handler_map=None,
 ):
-    """
-    Add a single legend centered above the figure panels.
-    """
+ 
 
     return fig.legend(
         handles=handles,
@@ -146,9 +136,6 @@ def save_or_show(
 
 
 def panel_id(index: int) -> str:
-    """
-    Panel label letters
-    """
 
     if index < 0:
         raise ValueError("panel index must be non-negative.")

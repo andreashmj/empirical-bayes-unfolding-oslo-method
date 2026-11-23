@@ -1,9 +1,5 @@
 """
-Reader for unfolded result NetCDF files.
-The stored draw convention is
-    x[Ex, Eg, chain, draw].
-This script returns row-wise vectors and draw arrays in a form used by the
-analysis and figure scripts.
+Script that reads the result NetCDF files. The stored draw convention is: x[Ex, Eg, chain, draw].
 """
 
 from __future__ import annotations
@@ -16,7 +12,6 @@ import xarray as xr
 
 def load_nc(path: str | Path) -> xr.Dataset:
     path = Path(path)
-
     if not path.exists():
         raise FileNotFoundError(path)
 
@@ -33,7 +28,6 @@ def require_mode(ds: xr.Dataset, expected_mode: str, path: str | Path) -> None:
 
 def actual_ex(ds: xr.Dataset, ex: float | None) -> float:
     ex_values = np.asarray(ds["Ex"].values, dtype=float)
-
     if ex is None:
         return ex_values[0].item()
 
@@ -51,7 +45,6 @@ def index_for_ex(ds: xr.Dataset, ex: float | None) -> int:
 def requested_ex(ds: xr.Dataset, ex_actual: float) -> float | None:
     if "Ex_req" not in ds:
         return None
-
     value = ds["Ex_req"].sel(Ex=ex_actual, method="nearest").values.item()
 
     if not np.isfinite(value):
@@ -63,13 +56,11 @@ def requested_ex(ds: xr.Dataset, ex_actual: float) -> float | None:
 def active_eg_length(ds: xr.Dataset, ex_actual: float) -> int:
     if "Eg_len" in ds:
         return ds["Eg_len"].sel(Ex=ex_actual, method="nearest").values.item()
-
     values = np.asarray(ds["n_obs"].sel(Ex=ex_actual, method="nearest").values, dtype=float,)
     return np.sum(np.isfinite(values)).item()
 
 
 def active_eg_grid(ds: xr.Dataset, active_eg_length: int) -> np.ndarray:
-
     return np.asarray(ds["Eg"].values[:active_eg_length], dtype=float)
 
 
@@ -82,7 +73,7 @@ def row_vector(
 ) -> np.ndarray:
 
     if name not in ds:
-        raise KeyError(f"Dataset missing variable '{name}'.")
+        raise KeyError(f"Dataset missing variable {name}.")
 
     values = np.asarray(
         ds[name].sel(Ex=ex_actual, method="nearest").isel(Eg=slice(0, active_eg_length)).values, dtype=float).reshape(-1)
@@ -100,7 +91,7 @@ def row_samples(
     active_eg_length: int,
 ) -> xr.DataArray:
     if name not in ds:
-        raise KeyError(f"Dataset missing variable '{name}'.")
+        raise KeyError(f"Dataset missing variable {name}.")
 
     data_array = ds[name]
 
@@ -108,7 +99,7 @@ def row_samples(
         data_array = data_array.sel(Ex=ex_actual, method="nearest")
 
     if "Eg" not in data_array.dims:
-        raise ValueError(f"Variable '{name}' must have an Eg dimension.")
+        raise ValueError(f"Variable {name} must have Eg dimension.")
 
     data_array = data_array.isel(Eg=slice(0, active_eg_length))
     sample_dims = [dim for dim in data_array.dims if dim != "Eg"]
@@ -141,10 +132,9 @@ def draw_cube(
     active_eg_length: int,
 ) -> np.ndarray:
     if name not in ds:
-        raise KeyError(f"Dataset missing variable '{name}'.")
-
+        raise KeyError(f"Dataset missing variable {name}.")
+        
     data_array = (ds[name].sel(Ex=ex_actual, method="nearest").isel(Eg=slice(0, active_eg_length)).transpose("chain", "draw", "Eg") )
-
     return np.asarray(data_array.values, dtype=float)
 
 
@@ -155,7 +145,7 @@ def operator_matrix(
     active_eg_length: int,
 ) -> np.ndarray:
     if name not in ds:
-        raise KeyError(f"Dataset missing operator '{name}'.")
+        raise KeyError(f"Dataset missing operator {name}.")
 
     data_array = ds[name].sel(Ex=ex_actual, method="nearest")
     dim0, dim1 = data_array.dims
@@ -224,17 +214,17 @@ class UnfoldingResults:
 
     def eta(self, ex_actual: float) -> xr.DataArray:
         x_draws = self.x(ex_actual)
-        _, g_gamma, _ = self.ops(ex_actual)
+        _, G_g, _ = self.ops(ex_actual)
 
-        values = np.asarray(x_draws.values, dtype=float) @ g_gamma
+        values = np.asarray(x_draws.values, dtype=float) @ G_g
 
         return xr.DataArray( values,  dims=("sample", "Eg"), coords=x_draws.coords, name="eta" )
 
     def eta_cube(self, ex_actual: float) -> np.ndarray:
         x_draws = self.x_cube(ex_actual)
-        _, g_gamma, _ = self.ops(ex_actual)
+        _, G_g, _ = self.ops(ex_actual)
 
-        return np.einsum("cde,ef->cdf", x_draws, g_gamma)
+        return np.einsum("cde,ef->cdf", x_draws, G_g)
 
     def nu(self, ex_actual: float) -> xr.DataArray:
         x_draws = self.x(ex_actual)
@@ -255,20 +245,17 @@ class UnfoldingResults:
 
         return xr.DataArray(values, dims=("sample", "Eg"), coords=nu_draws.coords, name="total_expected")
 
+    def emitted_true(self, ex_actual: float) -> np.ndarray:
+        return row_vector(self.ds, "x_true", ex_actual, self.n_eg(ex_actual), fill_nan=None)
+
     def x_true(self, ex_actual: float) -> np.ndarray:
-        return row_vector(self.ds, "x_true", ex_actual, self.n_eg(ex_actual))
+        return row_vector(self.ds, "x_mixed_true", ex_actual, self.n_eg(ex_actual), fill_nan=None)
 
     def eta_true(self, ex_actual: float) -> np.ndarray:
-        x_true = self.x_true(ex_actual)
-        _, g_gamma, _ = self.ops(ex_actual)
-
-        return x_true @ g_gamma
+        return row_vector(self.ds, "eta_true", ex_actual, self.n_eg(ex_actual), fill_nan=None)
 
     def nu_true(self, ex_actual: float) -> np.ndarray:
-        x_true = self.x_true(ex_actual)
-        _, _, response_matrix = self.ops(ex_actual)
-
-        return x_true @ response_matrix
+        return row_vector(self.ds, "nu_true", ex_actual, self.n_eg(ex_actual), fill_nan=None)
 
     def n_obs(self, ex_actual: float) -> np.ndarray:
         return row_vector(self.ds, "n_obs", ex_actual, self.n_eg(ex_actual))
@@ -296,8 +283,8 @@ class UnfoldingResults:
         if x_rl is None:
             return None
 
-        _, g_gamma, _ = self.ops(ex_actual)
-        return x_rl @ g_gamma
+        _, G_g, _ = self.ops(ex_actual)
+        return x_rl @ G_g
 
     def prior_sigma(self, ex_actual: float) -> np.ndarray | None:
         if "prior_sigma" not in self.ds:
@@ -326,8 +313,8 @@ class UnfoldingResults:
     def ops(self, ex_actual: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         active_eg_length = self.n_eg(ex_actual)
 
-        d_matrix = operator_matrix(self.ds, "D", ex_actual, active_eg_length)
-        g_gamma = operator_matrix(self.ds, "G_g", ex_actual, active_eg_length)
-        response_matrix = d_matrix @ g_gamma
+        D = operator_matrix(self.ds, "D", ex_actual, active_eg_length)
+        G_g = operator_matrix(self.ds, "G_g", ex_actual, active_eg_length)
+        response_matrix = D @ G_g
 
-        return d_matrix, g_gamma, response_matrix
+        return D, G_g, response_matrix

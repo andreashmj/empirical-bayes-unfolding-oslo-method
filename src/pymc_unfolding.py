@@ -1,5 +1,5 @@
 """
-PyMC unfolding model for one excitation-energy row. The implementation follows the OMpy right-hand convention used throughout the code base.
+Unfolding model in PYMC for one excitation-energy row.
 """
 
 from __future__ import annotations
@@ -14,23 +14,12 @@ import pytensor.tensor as pt
 from pymc.distributions import transforms as tr
 from pytensor import config as pytensor_config
 
-from .input_checks import (
-    require_bool,
-    require_finite_array,
-    require_float,
-    require_int,
-)
-
 
 FLOATX = "float64"
 pytensor_config.floatX = FLOATX
 
 
 def _extract_chain_draw_eg(data_array, name: str) -> np.ndarray:
-    """
-    Extract an xarray DataArray as an array with shape (chain, draw, Eg).
-    
-    """
 
     dims = list(data_array.dims)
 
@@ -46,58 +35,13 @@ def _extract_chain_draw_eg(data_array, name: str) -> np.ndarray:
         array = array[None, ...]
 
     else:
-        raise ValueError(
-            f"{name}: expected chain/draw or draw dimension, got dims={dims}."
-        )
+        raise ValueError(f"{name}: expected chain/draw or draw dimension, got dims={dims}.")
 
     if array.ndim != 3:
-        raise ValueError(
-            f"{name}: expected extracted shape (chain, draw, Eg), got {array.shape}."
-        )
+        raise ValueError(f"{name}: expected extracted shape (chain, draw, Eg), got {array.shape}.")
 
     return array
 
-
-def _finite_vector(values, nparams: int, name: str) -> np.ndarray:
-    """
-    Return a finite vector with the expected length.
-    
-    """
-
-    vector = require_finite_array(values, name).reshape(-1)
-
-    if vector.size != nparams:
-        raise ValueError(f"{name}: expected length {nparams}, got {vector.size}.")
-
-    return vector.astype(np.float64, copy=False)
-
-
-def _positive_vector(values, nparams: int, name: str) -> np.ndarray:
-    """Return a finite positive vector with the expected length."""
-
-    vector = _finite_vector(values, nparams, name)
-
-    if np.any(vector <= 0.0):
-        raise ValueError(f"{name} must contain only positive values.")
-
-    return vector
-
-
-def _nonnegative_vector(values, nparams: int, name: str) -> np.ndarray:
-    """Return a finite non-negative vector with the expected length."""
-
-    vector = _finite_vector(values, nparams, name)
-
-    if np.any(vector < 0.0):
-        raise ValueError(f"{name} must contain only non-negative values.")
-
-    return vector
-
-
-def _finite_matrix(values, name: str) -> np.ndarray:
-    """Return a finite two-dimensional matrix."""
-
-    return require_finite_array(values, name, ndim=2).astype(np.float64, copy=False)
 
 
 class PyMCUnfolder:
@@ -112,23 +56,18 @@ class PyMCUnfolder:
         self.debug = bool(debug)
 
         self.transform_name = str(self.sample_config["transform"]).strip().lower()
-        self.transform_kwargs = self._positive_transform_kwargs(self.transform_name)
 
-        initialization_config = self.sample_config.get("initialization", {}) or {}
-        self.rl_init = require_bool(
-            initialization_config.get("rl_init", False),
-            "initialization.rl_init",
-        )
-
-        self.initvals: dict[str, np.ndarray | float] = {}
-        self.x = None
-
-    @staticmethod
-    def _positive_transform_kwargs(transform_name: str) -> dict:
-        if transform_name != "log":
+        if self.transform_name != "log":
             raise ValueError("The implementation requires transform: log.")
 
-        return {"default_transform": tr.log}
+        self.transform_kwargs = {"default_transform": tr.log}
+    
+
+        initialization_config = self.sample_config.get("initialization", {}) or {}
+        self.rl_init = initialization_config.get("rl_init", False)
+
+        self.initvals: dict[str, np.ndarray | float] = {}
+        
 
     def _init_kwargs(self, name: str, value) -> dict:
         if not self.rl_init:
@@ -160,64 +99,31 @@ class PyMCUnfolder:
         return out
 
     def _build_prior(self, nparams: int):
-        """
-        Build the prior on the emitted-spectrum for the relevant Eg bins.
-        
-        """
-
         self.initvals = {}
 
-        dist = str(self.prior_config["dist"]).strip().lower()
-        params = self.prior_config.get("params", {}) or {}
+        dist = self.prior_config["dist"]
+        params = self.prior_config["params"]
 
         if dist == "gamma_lognormal_mean":
-            self.x = self._build_gamma_lognormal_mean_prior(params, nparams)
+            return self._build_gamma_lognormal_mean_prior(params, nparams)
 
-        elif dist == "gamma_lognormal_mean_hyper":
-            self.x = self._build_gamma_lognormal_mean_hyper_prior(params, nparams)
+        if dist == "gamma_lognormal_mean_hyper":
+            return self._build_gamma_lognormal_mean_hyper_prior(params, nparams)
 
-        elif dist == "lognormal":
-            self.x = self._build_lognormal_prior(params, nparams)
+        if dist == "lognormal":
+            return self._build_lognormal_prior(params, nparams)
 
-        else:
-            raise ValueError(
-                "Resolved prior dist must be one of: "
-                "gamma_lognormal_mean, gamma_lognormal_mean_hyper, lognormal."
-            )
-
-        return self.x
+        raise ValueError(f"Unknown prior distribution: {dist}")
 
     def _build_gamma_lognormal_mean_prior(self, params: dict, nparams: int):
-        """
-        Build the Gamma-Lognormal mean prior.
+
+        mu_center = np.asarray(params["mu_center"], dtype=np.float64)
+        sigma = np.asarray(params["sigma"], dtype=np.float64)
+        alpha = float(params["alpha"])
         
-        """
-
-        alpha = require_float(
-            params["alpha"],
-            "prior.alpha",
-            minimum=0.0,
-            minimum_inclusive=False,
-        )
-
-        mu_center = _positive_vector(
-            params["mu_center"],
-            nparams,
-            "prior.mu_center",
-        )
-        sigma = _positive_vector(
-            params["sigma"],
-            nparams,
-            "prior.sigma",
-        )
-
-        # The latent mean m_j is log-normal. The shift -sigma_j^2/2 makes
-        # E[m_j] equal to mu_center_j before the Gamma layer is applied.
         log_m_center = np.log(mu_center) - 0.5 * sigma**2
 
-        # Start at m_j = mu_center_j when RL initialization is enabled.
-        # Since log(m_j) = log_m_center_j + sigma_j z_mj, this corresponds to
-        # z_mj = sigma_j / 2.
+        
         z_m_init = 0.5 * sigma
 
         z_m = pm.Normal(
@@ -228,58 +134,36 @@ class PyMCUnfolder:
             **self._init_kwargs("z_m", z_m_init),
         )
 
-        log_m = pm.Deterministic(
-            "log_m",
-            pt.constant(log_m_center, dtype=FLOATX)
-            + pt.constant(sigma, dtype=FLOATX) * z_m,
-        )
+        log_m = pm.Deterministic("log_m", pt.constant(log_m_center, dtype=FLOATX) + pt.constant(sigma, dtype=FLOATX) * z_m)
 
         mean_local = pm.Deterministic("m", pt.exp(log_m))
-        beta_x = alpha / mean_local
+    
+        
+        u_kwargs = {}
+        u_kwargs.update(self._init_kwargs("u_x", np.ones(nparams, dtype=np.float64)))
+        u_kwargs.update(self.transform_kwargs)
 
-        x_kwargs = {}
-        x_kwargs.update(self._init_kwargs("x", mu_center))
-        x_kwargs.update(self.transform_kwargs)
-
-        return pm.Gamma(
-            "x",
+        u_x = pm.Gamma(
+            "u_x",
             alpha=alpha,
-            beta=beta_x,
+            beta=alpha,
             shape=nparams,
-            **x_kwargs,
+            **u_kwargs,
         )
+
+        return pm.Deterministic("x", mean_local * u_x)
 
     def _build_gamma_lognormal_mean_hyper_prior(self, params: dict, nparams: int):
-        """
-        Build the Gamma-Lognormal mean prior with the hyperparameters.
-        
-        """
 
-        alpha = require_float(
-            params["alpha"],
-            "prior.alpha",
-            minimum=0.0,
-            minimum_inclusive=False,
-        )
-        theta_mu = require_float(params["theta_mu"], "prior.theta_mu")
-        theta_sigma = require_float(
-            params["theta_sigma"],
-            "prior.theta_sigma",
-            minimum=0.0,
-            minimum_inclusive=False,
-        )
-        tau_sigma = require_float(
-            params["tau_sigma"],
-            "prior.tau_sigma",
-            minimum=0.0,
-            minimum_inclusive=False,
-        )
-
+        alpha = float(params["alpha"])
+        theta_mu = float(params["theta_mu"])
+        theta_sigma = float(params["theta_sigma"])
+        tau_sigma = float(params["tau_sigma"])
         theta = pm.Normal(
             "theta",
             mu=theta_mu,
             sigma=theta_sigma,
-            **self._init_kwargs("theta", theta_mu),
+            **self._init_kwargs("theta", theta_mu)
         )
 
         tau_kwargs = {}
@@ -289,7 +173,7 @@ class PyMCUnfolder:
         tau = pm.HalfNormal(
             "tau",
             sigma=tau_sigma,
-            **tau_kwargs,
+            **tau_kwargs
         )
 
         z = pm.Normal(
@@ -297,7 +181,7 @@ class PyMCUnfolder:
             mu=0.0,
             sigma=1.0,
             shape=nparams,
-            **self._init_kwargs("z", np.zeros(nparams, dtype=np.float64)),
+            **self._init_kwargs("z", np.zeros(nparams, dtype=np.float64))
         )
 
         log_m = pm.Deterministic("log_m", theta + tau * z)
@@ -315,188 +199,83 @@ class PyMCUnfolder:
             alpha=alpha,
             beta=beta_x,
             shape=nparams,
-            **x_kwargs,
+            **x_kwargs
         )
 
     def _build_lognormal_prior(self, params: dict, nparams: int):
-        """
-        Build a non-centered Lognormal prior for the emitted spectrum.
-        """
 
-        mu_log = _finite_vector(params["mu_log"], nparams, "prior.mu_log")
-        sigma = _positive_vector(params["sigma"], nparams, "prior.sigma")
+        mu_log = params["mu_log"]
+        sigma = params["sigma"]
 
         z_x = pm.Normal(
             "z_x",
             mu=0.0,
             sigma=1.0,
             shape=nparams,
-            **self._init_kwargs("z_x", np.zeros(nparams, dtype=np.float64)) )
+            **self._init_kwargs("z_x", np.zeros(nparams, dtype=np.float64)) 
+            )
 
-        log_x = pm.Deterministic(
-            "log_x",
-            pt.constant(mu_log, dtype=FLOATX) + pt.constant(sigma, dtype=FLOATX) * z_x,
-        )
+        log_x = pm.Deterministic("log_x", pt.constant(mu_log, dtype=FLOATX) + pt.constant(sigma, dtype=FLOATX) * z_x)
 
         return pm.Deterministic("x", pt.exp(log_x))
 
-    def _background_from_config(
+    
+
+    def _build_background(
         self,
-        n_off_obs: np.ndarray | None,
+        n_off_obs: np.ndarray,
         nparams: int,
         mode: str,
     ):
+        config = self.sample_config["background_model"]
+        kind = config["kind"]
+        a0 = config["a0"]
 
-        background_config = self.sample_config["background_model"]
-        kind = str(background_config["kind"]).strip().lower()
+        mean_off = float(np.mean(n_off_obs))
+        if mean_off <= 0.0:
+            raise ValueError("Mean OFF count must be positive.")
 
-        background_alpha = require_float(
-            background_config["a0"],
-            "background_model.a0",
-            minimum=0.0,
-            minimum_inclusive=False,
-        )
+        b0 = a0 / mean_off
 
         if kind == "latent_gamma":
-            background_expected, background_b0, n_off_checked = (
-                self._latent_gamma_background_prior(
-                    n_off_obs=n_off_obs,
-                    nparams=nparams,
-                    background_alpha=background_alpha,
-                )
+            bg_init = (a0 + n_off_obs) / (b0 + 1.0)
+
+            bg_kwargs = {}
+            bg_kwargs.update(self._init_kwargs("bg_exp", bg_init))
+            bg_kwargs.update(self.transform_kwargs)
+
+            background = pm.Gamma(
+                "bg_exp",
+                alpha=a0,
+                beta=b0,
+                shape=nparams,
+                **bg_kwargs,
             )
 
             if mode == "posterior":
-                self._add_off_count_likelihood(
-                    background_expected=background_expected,
-                    n_off_obs=n_off_checked,
+                pm.Poisson(
+                    "n_off_obs",
+                    mu=background,
+                    observed=n_off_obs,
                 )
 
-            return background_expected, background_b0
+        elif kind == "fixed_postmean":
+            background = pm.Deterministic("bg_exp", pt.constant((a0 + n_off_obs) / (b0 + 1.0), dtype=FLOATX))
 
-        if kind == "fixed_postmean":
-            return self._fixed_postmean_background(
-                n_off_obs=n_off_obs,
-                nparams=nparams,
-                background_alpha=background_alpha,
-            )
+        else:
+            raise ValueError(f"Unknown background model: {kind}")
 
-        raise ValueError(
-            "background_model.kind must be either latent_gamma or fixed_postmean."
-        )
-
-    @staticmethod
-    def _background_b0_from_off_counts(
-        n_off_obs: np.ndarray,
-        background_alpha: float,
-    ) -> float:
-        """
-        Return Gamma prior rate b0 from the OFF-count mean.
-        
-        """
-
-        mean_off = float(np.mean(n_off_obs))
-
-        if mean_off <= 0.0:
-            raise ValueError(
-                "Mean OFF count must be positive for the background model."
-            )
-
-        return background_alpha / mean_off
-
-    def _latent_gamma_background_prior(
-        self,
-        n_off_obs: np.ndarray | None,
-        nparams: int,
-        background_alpha: float,
-    ):
-        """
-        Build the empirical Gamma prior for the latent background expectation.
-        
-        """
-
-        if n_off_obs is None:
-            raise ValueError("background_model.kind=latent_gamma requires n_off_obs.")
-
-        n_off_obs = _nonnegative_vector(n_off_obs, nparams, "n_off_obs")
-        background_b0 = self._background_b0_from_off_counts(
-            n_off_obs,
-            background_alpha,
-        )
-
-        background_init = (background_alpha + n_off_obs) / (background_b0 + 1.0)
-
-        background_kwargs = {}
-        background_kwargs.update(self._init_kwargs("bg_exp", background_init))
-        background_kwargs.update(self.transform_kwargs)
-
-        background_expected = pm.Gamma(
-            "bg_exp",
-            alpha=background_alpha,
-            beta=background_b0,
-            shape=nparams,
-            **background_kwargs,
-        )
-
-        return background_expected, background_b0, n_off_obs
-
-    @staticmethod
-    def _add_off_count_likelihood(background_expected, n_off_obs: np.ndarray) -> None:
-        pm.Poisson("n_off_obs", mu=background_expected, observed=n_off_obs)
-
-    def _fixed_postmean_background(
-        self,
-        n_off_obs: np.ndarray | None,
-        nparams: int,
-        background_alpha: float,
-    ):
-        """
-        Fix the background to the Gamma-Poisson posterior mean from OFF counts.
-        """
-
-        if n_off_obs is None:
-            raise ValueError("background_model.kind=fixed_postmean requires n_off_obs.")
-
-        n_off_obs = _nonnegative_vector(n_off_obs, nparams, "n_off_obs")
-        background_b0 = self._background_b0_from_off_counts(
-            n_off_obs,
-            background_alpha,
-        )
-
-        background_fixed = (background_alpha + n_off_obs) / (background_b0 + 1.0)
-
-        background_expected = pm.Deterministic(
-            "bg_exp",
-            pt.constant(background_fixed, dtype=FLOATX),
-        )
-
-        return background_expected, background_b0
+        return background, b0
 
 
-    @staticmethod
-    def _wanted_var_names(include_background: bool) -> list[str]:
 
-        names = ["x"]
-
-        if include_background:
-            names.append("bg_exp")
-
-        return names
 
     def _sample_prior(self, model: pm.Model, var_names: list[str]) -> az.InferenceData:
-        """
-        Draw prior samples of the relevant latent variables.
-        
-        """
 
         prior_config = self.sample_config["prior"]
 
-        draws = require_int(prior_config["draws"], "prior.draws", minimum=1)
-        random_seed = require_int(
-            prior_config["random_seed"],
-            "prior.random_seed",
-            minimum=0,
-        )
+        draws = int(prior_config["draws"])
+        random_seed = int(prior_config["random_seed"])
 
         idata = pm.sample_prior_predictive(
             draws=draws,
@@ -518,35 +297,16 @@ class PyMCUnfolder:
         model: pm.Model,
         var_names: list[str],
     ) -> az.InferenceData:
-        """
-        Sample from the posterior using the given NUTS backend.
-        
-        """
 
         nuts_config = self.sample_config["nuts"]
         nuts_sampler = str(nuts_config.get("nuts_sampler", "pymc")).strip().lower()
 
-        draws = require_int(nuts_config["draws"], "nuts.draws", minimum=1)
-        tune = require_int(nuts_config["tune"], "nuts.tune", minimum=0)
-        chains = require_int(nuts_config["chains"], "nuts.chains", minimum=1)
-        target_accept = require_float(
-            nuts_config["target_accept"],
-            "nuts.target_accept",
-            minimum=0.0,
-            maximum=1.0,
-            minimum_inclusive=False,
-            maximum_inclusive=False,
-        )
-        max_treedepth = require_int(
-            nuts_config["max_treedepth"],
-            "nuts.max_treedepth",
-            minimum=1,
-        )
-        random_seed = require_int(
-            nuts_config["random_seed"],
-            "nuts.random_seed",
-            minimum=0,
-        )
+        draws = int(nuts_config["draws"])
+        tune = int(nuts_config["tune"])
+        chains = int(nuts_config["chains"])
+        target_accept = float(nuts_config["target_accept"])
+        max_treedepth = int(nuts_config["max_treedepth"])
+        random_seed = int(nuts_config["random_seed"])
 
         if self.debug:
             print(
@@ -597,9 +357,7 @@ class PyMCUnfolder:
             )
 
         else:
-            raise ValueError(
-                "nuts.nuts_sampler must be one of: pymc, numpyro, blackjax, nutpie."
-            )
+            raise ValueError("nuts.nuts_sampler must be one of: pymc, numpyro, blackjax, nutpie.")
 
         sampling_time_s = float(time.perf_counter() - start_time)
 
@@ -629,23 +387,13 @@ class PyMCUnfolder:
         random_seed: int,
         nuts_config: dict,
     ) -> az.InferenceData:
-        """
-        Sample with the standard PyMC NUTS backend.
-        
-        """
 
         pymc_config = nuts_config.get("pymc", {}) or {}
 
-        cores = require_int(pymc_config.get("cores", chains), "nuts.pymc.cores", minimum=1)
-        init = str(pymc_config.get("init", "jitter+adapt_diag"))
-        dense_mass = require_bool(
-            pymc_config.get("dense_mass", False),
-            "nuts.pymc.dense_mass",
-        )
-        progressbar = require_bool(
-            pymc_config.get("progressbar", True),
-            "nuts.pymc.progressbar",
-        )
+        cores = pymc_config.get("cores", chains)
+        init = pymc_config.get("init", "jitter+adapt_diag")
+        dense_mass = pymc_config.get("dense_mass", False)
+        progressbar = pymc_config.get("progressbar", True)
 
         if dense_mass and init == "jitter+adapt_diag":
             init = "jitter+adapt_full"
@@ -687,21 +435,15 @@ class PyMCUnfolder:
         random_seed: int,
         nuts_config: dict,
     ) -> az.InferenceData:
-        """
-        Sample with the NumPyro or BlackJAX NUTS backend.
-        
-        """
+    
 
         jax_config = nuts_config.get("jax", {}) or {}
 
         platform = str(jax_config.get("platform", "auto")).strip().lower()
         chain_method = str(jax_config.get("chain_method", "parallel")).strip().lower()
-        x64 = require_bool(jax_config.get("x64", True), "nuts.jax.x64")
-        progressbar = require_bool(
-            jax_config.get("progressbar", True),
-            "nuts.jax.progressbar",
-        )
-        jitter = require_bool(jax_config.get("jitter", True), "nuts.jax.jitter")
+        x64 = jax_config.get("x64", True)
+        progressbar = jax_config.get("progressbar", True)
+        jitter = jax_config.get("jitter", True)
         nuts_kwargs = dict(jax_config.get("nuts_kwargs", {}) or {})
 
         import jax
@@ -783,56 +525,25 @@ class PyMCUnfolder:
         random_seed: int,
         nuts_config: dict,
     ) -> az.InferenceData:
-        """
-        Sample with the Nutpie NUTS backend.
-        
-        
-        """
 
         nutpie_config = nuts_config.get("nutpie", {}) or {}
-
-        compile_backend = str(
-            nutpie_config.get("compile_backend", "numba")
-        ).strip().lower()
-        cores = require_int(
-            nutpie_config.get("cores", chains),
-            "nuts.nutpie.cores",
-            minimum=1,
-        )
-        save_warmup = require_bool(
-            nutpie_config.get("save_warmup", False),
-            "nuts.nutpie.save_warmup",
-        )
-        store_divergences = require_bool(
-            nutpie_config.get("store_divergences", False),
-            "nuts.nutpie.store_divergences",
-        )
-        progress_bar = require_bool(
-            nutpie_config.get("progressbar", True),
-            "nuts.nutpie.progressbar",
-        )
-        use_initial_points = require_bool(
-            nutpie_config.get("use_initial_points", False),
-            "nuts.nutpie.use_initial_points",
-        )
+        compile_backend = str(nutpie_config.get("compile_backend", "numba")).strip().lower()
+        cores = int(nutpie_config.get("cores", chains))
+            
+        save_warmup = nutpie_config.get("save_warmup", False)
+    
+        store_divergences = nutpie_config.get("store_divergences", False)
+        progress_bar = nutpie_config.get("progressbar", True)
+        use_initial_points = nutpie_config.get("use_initial_points", False)
 
         import nutpie
 
         initial_points = self._sampler_initvals() if use_initial_points else None
 
         if compile_backend == "numba":
-            compiled_model = nutpie.compile_pymc_model(
-                model,
-                backend="numba",
-                initial_points=initial_points,
-            )
+            compiled_model = nutpie.compile_pymc_model(model, backend="numba", initial_points=initial_points)
         elif compile_backend == "jax":
-            compiled_model = nutpie.compile_pymc_model(
-                model,
-                backend="jax",
-                gradient_backend="jax",
-                initial_points=initial_points,
-            )
+            compiled_model = nutpie.compile_pymc_model(model, backend="jax", gradient_backend="jax", initial_points=initial_points)
         else:
             raise ValueError("nuts.nutpie.compile_backend must be numba or jax.")
 
@@ -850,16 +561,10 @@ class PyMCUnfolder:
         )
 
         if "low_rank_modified_mass_matrix" in nutpie_config:
-            sample_kwargs["low_rank_modified_mass_matrix"] = require_bool(
-                nutpie_config["low_rank_modified_mass_matrix"],
-                "nuts.nutpie.low_rank_modified_mass_matrix",
-            )
+            sample_kwargs["low_rank_modified_mass_matrix"] = nutpie_config["low_rank_modified_mass_matrix"]
 
         if "transform_adapt" in nutpie_config:
-            sample_kwargs["transform_adapt"] = require_bool(
-                nutpie_config["transform_adapt"],
-                "nuts.nutpie.transform_adapt",
-            )
+            sample_kwargs["transform_adapt"] = nutpie_config["transform_adapt"]
 
         idata = nutpie.sample(compiled_model, **sample_kwargs)
 
@@ -875,76 +580,48 @@ class PyMCUnfolder:
         self,
         n_obs: np.ndarray,
         n_off_obs: np.ndarray | None,
-        D: np.ndarray,
-        G_g: np.ndarray,
+        R: np.ndarray,
         mode: str,
         include_background: bool,
-        output_trace_path: str | Path | None,
-        debug: bool = False,
+        output_trace_path: str | Path | None
     ) -> tuple[np.ndarray, np.ndarray | None]:
         """
         Run prior or posterior sampling for one excitation-energy bin.
         
-        
         """
 
-        n_obs = require_finite_array(
-            n_obs,
-            "n_obs",
-            ndim=1,
-            nonnegative=True,
-        ).reshape(-1)
-
-        D = _finite_matrix(D, "D")
-        G_g = _finite_matrix(G_g, "G_g")
-
-        response_matrix = D @ G_g
-
-        if response_matrix.ndim != 2 or response_matrix.shape[0] != response_matrix.shape[1]:
-            raise ValueError(f"D @ G_g must be square, got {response_matrix.shape}.")
-
-        nparams = response_matrix.shape[0]
-
-        if n_obs.size != nparams:
-            raise ValueError(f"n_obs length must be {nparams}, got {n_obs.size}.")
-
-        if n_off_obs is not None:
-            n_off_obs = _nonnegative_vector(n_off_obs, nparams, "n_off_obs")
-
-        include_background = require_bool(include_background, "include_background")
+        nparams = R.shape[0]
+        
+        if R.shape != (n_obs.size, n_obs.size):
+            raise ValueError("R and n_obs have incompatible dimensions.")
 
         mode = str(mode).lower().strip()
         if mode not in {"prior", "posterior"}:
             raise ValueError("mode must be either prior or posterior.")
 
         with pm.Model() as model:
-            x = self._build_prior(nparams=nparams)
+            x = self._build_prior(nparams)
 
             if self.debug or debug:
                 print(
-                    f"[model] prior={self.prior_config['dist']} "
+                    f"prior={self.prior_config['dist']} "
                     f"transform={self.transform_name} "
                     f"rl_init={self.rl_init}"
                 )
 
-            response_constant = pt.constant(response_matrix, dtype=FLOATX)
-            nu = pm.Deterministic("nu", pt.dot(x, response_constant))
+            nu = pm.Deterministic("nu", pt.dot(x, pt.constant(R, dtype=FLOATX)))
 
             expected_counts = nu
             background_b0 = None
 
             if include_background:
-                background_expected, background_b0 = self._background_from_config(
-                    n_off_obs=n_off_obs,
-                    nparams=nparams,
-                    mode=mode,
-                )
-                expected_counts = nu + background_expected
+                background, background_b0 = self._build_background(n_off_obs=n_off_obs, nparams=nparams, mode=mode)
+                expected_counts = nu + background
 
             if mode == "posterior":
                 pm.Poisson("n_obs", mu=expected_counts, observed=n_obs)
 
-            var_names = self._wanted_var_names(include_background)
+            var_names = ["x", "bg_exp"] if include_background else ["x"]
 
             if mode == "prior":
                 idata = self._sample_prior(model, var_names)
@@ -958,14 +635,8 @@ class PyMCUnfolder:
             idata.attrs["include_background"] = (
                 "true" if include_background else "false"
             )
-            idata.attrs["background_model"] = (
-                str(self.sample_config["background_model"]["kind"])
-                if include_background
-                else "none"
-            )
-            idata.attrs["bg_b0"] = (
-                float(background_b0) if background_b0 is not None else "none"
-            )
+            idata.attrs["background_model"] = (str(self.sample_config["background_model"]["kind"]) if include_background else "none")
+            idata.attrs["bg_b0"] = (float(background_b0) if background_b0 is not None else "none")
 
             if output_trace_path is not None:
                 output_trace_path = Path(output_trace_path)
@@ -976,9 +647,6 @@ class PyMCUnfolder:
 
             background_draws = None
             if include_background:
-                background_draws = _extract_chain_draw_eg(
-                    draws_group["bg_exp"],
-                    "bg_exp",
-                )
+                background_draws = _extract_chain_draw_eg(draws_group["bg_exp"], "bg_exp")
 
             return x_draws, background_draws

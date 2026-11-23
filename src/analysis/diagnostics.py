@@ -25,7 +25,7 @@ def diagnostic_draws(results: UnfoldingResults, ex_actual: float, var: DiagVar) 
     if var == "eta":
         return results.eta_cube(ex_actual)
 
-    raise ValueError("var must be 'x' or 'eta'.")
+    raise ValueError("var must be x or eta.")
 
 
 def truth_vector(results: UnfoldingResults, ex_actual: float, var: DiagVar) -> np.ndarray:
@@ -37,7 +37,7 @@ def truth_vector(results: UnfoldingResults, ex_actual: float, var: DiagVar) -> n
     if var == "eta":
         return results.eta_true(ex_actual)
 
-    raise ValueError("var must be 'x' or 'eta'.")
+    raise ValueError("var must be x or eta.")
 
 
 def rhat_ess_by_eg(
@@ -45,22 +45,11 @@ def rhat_ess_by_eg(
     eg_axis: np.ndarray,
     name: str,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Compute R-hat and bulk ESS.
-    
-    """
 
-    idata = az.from_dict(
-        posterior={name: draws},
-        coords={"Eg": eg_axis},
-        dims={name: ["Eg"]},
-    )
+    idata = az.from_dict( posterior={name: draws}, coords={"Eg": eg_axis}, dims={name: ["Eg"]})
 
     rhat = np.asarray(az.rhat(idata, var_names=[name])[name].values, dtype=float)
-    ess = np.asarray(
-        az.ess(idata, var_names=[name], method="bulk")[name].values,
-        dtype=float,
-    )
+    ess = np.asarray(az.ess(idata, var_names=[name], method="bulk")[name].values, dtype=float)
 
     return rhat.reshape(-1), ess.reshape(-1)
 
@@ -140,11 +129,7 @@ def trace_stats(
             tree_depth_hit_count = np.sum(tree_depth[finite] >= max_treedepth).item()
             tree_depth_hit_percent = 100.0 * tree_depth_hit_count / np.sum(finite).item()
 
-    return {
-        "divergences": divergences,
-        "tree_depth_hit_count": tree_depth_hit_count,
-        "tree_depth_hit_percent": tree_depth_hit_percent,
-    }
+    return {"divergences": divergences, "tree_depth_hit_count": tree_depth_hit_count,"tree_depth_hit_percent": tree_depth_hit_percent}
 
 
 def trace_path_for_ex(
@@ -244,7 +229,7 @@ def summarize_ex(
         "sum_n_obs": np.sum(n_obs).item(),
         "sum_n_off_obs": sum_n_off_obs,
         "max_n_obs": np.max(n_obs).item(),
-        "median_nonzero_n_obs": median_nonzero_n_obs,
+        "median_nonzero_n_obs": median_nonzero_n_obs
     }
 
     out.update(diagnostic_summary)
@@ -259,15 +244,5 @@ def summarize_run(
 ) -> pd.DataFrame:
 
     results = UnfoldingResults(draws_nc, expected_mode="posterior")
-
-    rows = [
-        summarize_ex(
-            results=results,
-            ex_index=ex_index,
-            draws_nc=draws_nc,
-            var=var,
-        )
-        for ex_index in range(results.ds.sizes["Ex"])
-    ]
-
+    rows = [summarize_ex(results=results, ex_index=ex_index, draws_nc=draws_nc, var=var) for ex_index in range(results.ds.sizes["Ex"])]
     return pd.DataFrame(rows)

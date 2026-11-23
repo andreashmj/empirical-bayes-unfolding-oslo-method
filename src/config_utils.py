@@ -1,5 +1,5 @@
 """
-Functions for loading the YAML configuration files into the unfolding code base. This include the run, prior and sampler configs.
+Functions for loading the run, prior and sampler configs.
 """
 
 from __future__ import annotations
@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from ompy.units import from_unit
 
 from .input_checks import require_bool, require_float, require_int
 
 
 def load_yaml(path: str | Path) -> dict[str, Any]:
-    """Load a YAML mapping."""
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(path)
@@ -33,12 +33,21 @@ def load_yaml(path: str | Path) -> dict[str, Any]:
 
 
 def load_run_config(path: str | Path) -> dict[str, Any]:
-    """Load a run configuration file."""
-    return load_yaml(path)
+    config = load_yaml(path)
+
+    if config.get("ex_energies") is not None:
+        config["ex_energies"] = [
+            float(from_unit(value, "keV")) for value in config["ex_energies"]
+        ]
+
+    for key in ("ex_start_energy", "ex_end_energy", "fwhm_ex_kev", "eg_margin_kev"):
+        if config.get(key) is not None:
+            config[key] = float(from_unit(config[key], "keV"))
+
+    return config
 
 
 def dict_to_namespace(obj: Any) -> Any:
-    """Convert dictionaries to argparse.Namespace objects."""
 
     if isinstance(obj, dict):
         return argparse.Namespace(
@@ -49,17 +58,6 @@ def dict_to_namespace(obj: Any) -> Any:
     return obj
 
 
-def _deep_update(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
-    """Return an update of base without modifying the inputs."""
-
-    out = copy.deepcopy(base)
-    for key, value in updates.items():
-        if isinstance(value, dict) and isinstance(out.get(key), dict):
-            out[key] = _deep_update(out[key], value)
-        else:
-            out[key] = copy.deepcopy(value)
-    return out
-
 
 def _required_value(config: dict[str, Any], key: str, name: str) -> Any:
     """Return a required mapping value."""
@@ -68,167 +66,24 @@ def _required_value(config: dict[str, Any], key: str, name: str) -> Any:
     return config[key]
 
 
-class ProfileMapper:
-    """Resolve a named profile for one excitation energy. A mapping rule can either list exact excitation energies,
-        energies: [2500, 4000]
-    or define an excitation-energy range,
-        range: [3000, 6000]
-    Exact-energy rules have higher priority than range rules. 
-    """
 
-    def __init__(self, profiles: dict[str, Any], mapping: list[dict[str, Any]] ):
-        if not isinstance(profiles, dict) or not profiles:
-            raise ValueError("Profile config must contain a non-empty profiles mapping.")
-
-        if not isinstance(mapping, list) or not mapping:
-            raise ValueError("Profile config must contain a non-empty mapping list.")
-
-        self.profiles = copy.deepcopy(profiles)
-        self._ranges: list[tuple[float, float, str]] = []
-        self._energies: dict[float, str] = {}
-
-        for rule in mapping:
-            if not isinstance(rule, dict):
-                raise TypeError("Each profile mapping rule must be a mapping.")
-            profile_name = str(_required_value(rule, "profile", "profile"))
-            if profile_name not in self.profiles:
-                raise KeyError(f"Profile {profile_name!r} is not defined in profiles.")
-
-            has_range = "range" in rule
-            has_energies = "energies" in rule
-
-            if has_range == has_energies:
-                raise ValueError(
-                    "Each profile mapping rule must contain exactly one of range or energies.")
-
-            if has_range:
-                self._add_range(rule["range"], profile_name)
-            else:
-                self._add_energies(rule["energies"], profile_name)
-
-    def _add_range(self, values: Any, profile_name: str) -> None:
-        if not isinstance(values, (list, tuple)) or len(values) != 2:
-            raise ValueError("Profile mapping range must contain two values.")
-
-        lower = require_float(values[0], "profile range lower")
-        upper = require_float(values[1], "profile range upper")
-
-        if lower >= upper:
-            raise ValueError("Profile mapping range lower value must be < upper value.")
-        self._ranges.append((lower, upper, profile_name))
-
-    def _add_energies(self, values: Any, profile_name: str) -> None:
-        if not isinstance(values, (list, tuple)):
-            raise TypeError("Profile mapping energies must be a list.")
-
-        for value in values:
-            energy = require_float(value, "profile mapping energy")
-
-            if energy in self._energies:
-                raise ValueError(f"Duplicate profile mapping for Ex={energy}.")
-
-            self._energies[energy] = profile_name
-
-    def profile_for(self, ex_energy: float) -> dict[str, Any]:
-        """Return a copy of the profile for one excitation energy."""
-
-        ex_energy = require_float(ex_energy, "ex_energy")
-
-        if ex_energy in self._energies:
-            return copy.deepcopy(self.profiles[self._energies[ex_energy]])
-
-        for lower, upper, profile_name in self._ranges:
-            if lower <= ex_energy < upper:
-                return copy.deepcopy(self.profiles[profile_name])
-
-        raise KeyError(f"No profile matches Ex={ex_energy}.")
-
-
-class SamplerMapper:
-    """
-    Build the sampler configuration for one excitation-energy bin. The sampler YAML has a complete configuration and can have profile overrides. For a requested Ex value, the matching profile is merged into the base configuration and the final result is checked.
-    """
-
-    def __init__(self, sampler_config: dict[str, Any]):
-        sampler_config = copy.deepcopy(sampler_config)
-
-        profiles = sampler_config.pop("profiles", None)
-        mapping = sampler_config.pop("mapping", None)
-
-        self.base_config = sampler_config
-        self.profile_mapper = _optional_profile_mapper(profiles, mapping)
-
-        _validate_sampler_config(self.base_config)
-
-    def config_for(self, ex_energy: float) -> dict[str, Any]:
-        """Return the sampler configuration for one excitation-energy bin."""
-        config = copy.deepcopy(self.base_config)
-
-        if self.profile_mapper is not None:
-            profile = self.profile_mapper.profile_for(ex_energy)
-            _validate_sampler_profile(profile)
-            config = _deep_update(config, profile)
-
-        _validate_sampler_config(config)
-        return config
-
-def _optional_profile_mapper(
-    profiles: Any,
-    mapping: Any,
-) -> ProfileMapper | None:
-    if profiles is None and mapping is None:
-        return None
-
-    if profiles is None or mapping is None:
-        raise ValueError(
-            "Sampler config must contain both profiles and mapping or neither")
-    return ProfileMapper(profiles, mapping)
-
-
-def load_prior_config(path: str | Path) -> dict[str, Any]:
-    """Load and validate a prior configuration file."""
+def load_prior_config(path):
     config = load_yaml(path)
 
-    profiles = _required_value(config, "profiles", "profiles")
-    mapping = _required_value(config, "mapping", "mapping")
-    ProfileMapper(profiles, mapping)
+    if "dist" not in config:
+        raise ValueError("Prior configuration requires dist.")
 
     return config
 
 
-def load_sampler_config(path: str | Path) -> dict[str, Any]:
-    """Load a sampler configuration file."""
+def load_sampler_config(path):
     config = load_yaml(path)
-    if ("profiles" in config) != ("mapping" in config):
-        raise ValueError(
-            "Sampler config must contain both profiles and mapping, or neither.")
+    _validate_sampler_config(config)
     return config
+
     
-def _validate_sampler_profile(profile: dict[str, Any]) -> None:
-    """Validate one Ex-dependent sampler-profile override."""
-    if not isinstance(profile, dict):
-        raise TypeError("Sampler profile must be a mapping.")
-
-    allowed_top_level = {"nuts"}
-    unknown_keys = sorted(set(profile) - allowed_top_level)
-
-    if unknown_keys:
-        joined = ", ".join(unknown_keys)
-        raise ValueError(
-            "Sampler profiles may only override NUTS tuning settings. "
-            f"Invalid top-level key(s): {joined}."
-        )
-
-    nuts_profile = profile.get("nuts", {})
-
-    if not isinstance(nuts_profile, dict):
-        raise TypeError("Sampler profile section nuts must be a mapping.")
-
-    if "nuts_sampler" in nuts_profile:
-        raise ValueError("Sampler profiles must not override nuts.nuts_sampler.")
 
 def _validate_sampler_config(config: dict[str, Any]) -> None:
-    """Validate a complete sampler configuration."""
     if not isinstance(config, dict):
         raise TypeError("Sampler config must be a mapping.")
 
@@ -238,20 +93,14 @@ def _validate_sampler_config(config: dict[str, Any]) -> None:
 
 
 def _validate_prior_sampler_config(config: dict[str, Any]) -> None:
-    """Validate the prior-draw part of the sampler configuration."""
     if not isinstance(config, dict):
         raise TypeError("Sampler config section prior must be a mapping.")
 
     require_int(_required_value(config, "draws", "prior.draws"), "prior.draws", minimum=1)
-    require_int(
-        _required_value(config, "random_seed", "prior.random_seed"),
-        "prior.random_seed",
-        minimum=0,
-    )
+    require_int(_required_value(config, "random_seed", "prior.random_seed"), "prior.random_seed", minimum=0)
 
 
 def _validate_initialization_config(config: dict[str, Any] | None) -> None:
-    """Validate optional sampler initialization settings."""
 
     if config is None:
         return
@@ -261,8 +110,6 @@ def _validate_initialization_config(config: dict[str, Any] | None) -> None:
         require_bool(config["rl_init"], "initialization.rl_init")
 
 def _validate_nuts_config(config: dict[str, Any]) -> None:
-    """Validate the NUTS part of the sampler configuration."""
-
     if not isinstance(config, dict):
         raise TypeError("Sampler config section nuts must be a mapping.")
 
@@ -275,18 +122,10 @@ def _validate_nuts_config(config: dict[str, Any]) -> None:
     require_int(_required_value(config, "draws", "nuts.draws"), "nuts.draws", minimum=1)
     require_int(_required_value(config, "tune", "nuts.tune"), "nuts.tune", minimum=0)
     require_int(_required_value(config, "chains", "nuts.chains"), "nuts.chains", minimum=1)
-    require_int(
-        _required_value(config, "max_treedepth", "nuts.max_treedepth"),
-        "nuts.max_treedepth",
-        minimum=1)
-    require_int(
-        _required_value(config, "random_seed", "nuts.random_seed"),
-        "nuts.random_seed",
-        minimum=0)
+    require_int(_required_value(config, "max_treedepth", "nuts.max_treedepth"), "nuts.max_treedepth", minimum=1)
+    require_int(_required_value(config, "random_seed", "nuts.random_seed"),"nuts.random_seed", minimum=0)
 
-    require_float(
-        _required_value(config, "target_accept", "nuts.target_accept"),
-        "nuts.target_accept",
+    require_float(_required_value(config, "target_accept", "nuts.target_accept"), "nuts.target_accept",
         minimum=0.0,
         maximum=1.0,
         minimum_inclusive=False,
@@ -300,11 +139,35 @@ def _validate_nuts_config(config: dict[str, Any]) -> None:
 
     if nuts_sampler == "nutpie" and "nutpie" in config:
         _validate_nutpie_config(config["nutpie"])
+        
+        
+    ranges = []
+
+    for rule in config.get("target_accept_by_ex", []):
+        lower, upper = map(float, rule["range"])
+
+        if lower >= upper:
+            raise ValueError("Invalid target_accept Ex range.")
+
+        require_float(
+            rule["value"],
+            "target_accept_by_ex.value",
+            minimum=0.0,
+            maximum=1.0,
+            minimum_inclusive=False,
+            maximum_inclusive=False,
+        )
+
+        ranges.append((lower, upper))
+
+    ranges.sort()
+
+    for previous, current in zip(ranges, ranges[1:]):
+        if current[0] < previous[1]:
+            raise ValueError("Overlapping target_accept Ex ranges.")
 
 
 def _validate_pymc_backend_config(config: dict[str, Any]) -> None:
-    """Validate PyMC backend settings."""
-
     if not isinstance(config, dict):
         raise TypeError("Sampler config section nuts.pymc must be a mapping.")
     if "cores" in config:
@@ -318,8 +181,6 @@ def _validate_pymc_backend_config(config: dict[str, Any]) -> None:
 
 
 def _validate_jax_config(config: dict[str, Any]) -> None:
-    """Validate JAX backend settings."""
-
     if not isinstance(config, dict):
         raise TypeError("Sampler config section nuts.jax must be a mapping.")
     if "platform" in config and not isinstance(config["platform"], str):
@@ -337,8 +198,6 @@ def _validate_jax_config(config: dict[str, Any]) -> None:
 
 
 def _validate_nutpie_config(config: dict[str, Any]) -> None:
-    """Validate Nutpie backend settings."""
-
     if not isinstance(config, dict):
         raise TypeError("Sampler config section nuts.nutpie must be a mapping.")
     if "compile_backend" in config:

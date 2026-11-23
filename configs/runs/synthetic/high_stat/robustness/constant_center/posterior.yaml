@@ -1,0 +1,33 @@
+dataset_kind: synthetic
+output_dir: results
+dataset_id: high_stat
+run_id: robustness/constant_center
+
+mat_path: data/ExEg_1e8.npz
+mode: posterior
+transform: log
+
+ex_energies: [4000]
+rebin_factors: [10, 2]
+mat_scale: 0.5
+lower_eg_cut: "100keV"
+
+include_background: true
+bg_fraction: 0.15
+bg_flat_fraction: 0.1
+background_model:
+  kind: latent_gamma
+  a0: 0.1
+
+eg_tail_mass: 1.0e-6
+response_db: OSCAR2020
+fwhm_eg_gen: "30keV"
+fwhm_eg_unfold: "30keV"
+include_ex_smearing: true
+fwhm_ex_gen: "150keV"
+
+prior_config: configs/priors/gamma_lognormal_mean_constant_center/baseline.yaml
+sample_config: configs/samplers/pymc.yaml
+save_trace: true
+debug: true
+rng_seed: 100

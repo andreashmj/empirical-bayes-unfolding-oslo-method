@@ -33,3 +33,4 @@ results/**/provenance.json
 # Temporary files
 *.tmp
 *.bak
+results/

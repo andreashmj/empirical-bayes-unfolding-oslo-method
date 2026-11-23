@@ -1,15 +1,5 @@
 """
-Run Bayesian unfolding for selected excitation-energy rows.
-
-For each selected Ex bin, this module builds the prior, resolves the sampler
-configuration for that bin, runs prior or posterior sampling, and stores the
-resulting x-space draws in one NetCDF file.
-Stored draw convention:
-    x[Ex, Eg, chain, draw]
-The implementation follows the OMpy right-hand convention used throughout the
-code base:
-    eta = x @ G_g
-    nu  = x @ D @ G_g
+Run empirical-Bayes unfolding method for the excitation-energies given by the run configuration file. 
 """
 
 from __future__ import annotations
@@ -25,8 +15,6 @@ import ompy.response
 import xarray as xr
 
 from .config_utils import (
-    ProfileMapper,
-    SamplerMapper,
     dict_to_namespace,
     load_prior_config,
     load_run_config,
@@ -37,7 +25,7 @@ from .input_checks import (
     require_finite_array,
     require_float
 )
-from .paths import repo_path
+from .paths import bayes_run_dir, repo_path
 from .prior.factory import make_prior
 from .pymc_unfolding import PyMCUnfolder
 from .synthetic_data import SyntheticDataLoader
@@ -49,8 +37,7 @@ from .experimental_data import ExperimentalDataLoader
 
 
 def _run_dir(config: argparse.Namespace) -> Path:
-    output_dir = repo_path(config.output_dir)
-    return output_dir / str(config.dataset_id) / str(config.run_id) / str(config.mode)
+    return bayes_run_dir(vars(config))
 
 
 def _draws_path(config: argparse.Namespace) -> Path:
@@ -78,7 +65,6 @@ def _as_chain_draw_eg(
     active_eg_length: int,
     name: str,
 ) -> np.ndarray:
-    """Return a draw array with shape (chain, draw, Eg)."""
 
     array = np.asarray(array, dtype=np.float64)
 
@@ -100,10 +86,7 @@ def _stack_draws(
     active_eg_lengths: list[int],
     name: str
 ) -> xr.DataArray:
-    """
-    Stack draw arrays for Ex bins into one DataArray with dims (Ex, Eg, chain, draw).
-    
-    """
+
 
     checked_arrays: list[np.ndarray] = []
     n_chains = None
@@ -121,37 +104,28 @@ def _stack_draws(
         if n_chains is None:
             n_chains = current_chains
         elif current_chains != n_chains:
-            raise ValueError(
-                f"{name}: inconsistent chain count at Ex row {ex_index}: "
-                f"{current_chains} vs {n_chains}.")
+            raise ValueError(f"{name}: inconsistent chain count at Ex row {ex_index}: {current_chains} vs {n_chains}.")
 
         if n_draws is None:
             n_draws = current_draws
         elif current_draws != n_draws:
-            raise ValueError(
-                f"{name}: inconsistent draw count at Ex row {ex_index}: "
-                f"{current_draws} vs {n_draws}."
-            )
+            raise ValueError(f"{name}: inconsistent draw count at Ex row {ex_index}: {current_draws} vs {n_draws}.")
 
         checked_arrays.append(draw_array)
 
     if n_chains is None or n_draws is None:
         raise ValueError(f"{name}: no arrays to stack.")
 
-    data = np.full(
-        (len(ex_values), len(eg_axis), n_chains, n_draws),
-        np.nan,
-        dtype=np.float64)
+    data = np.full((len(ex_values), len(eg_axis), n_chains, n_draws), np.nan, dtype=np.float64)
 
     for ex_index, draw_array in enumerate(checked_arrays):
         active_eg_length = active_eg_lengths[ex_index]
 
-        # Sampler output is (chain, draw, Eg). The stored convention is
-        # (Ex, Eg, chain, draw), so each Ex block must be (Eg, chain, draw).
         eg_chain_draw_block = np.moveaxis(
             draw_array[:, :, :active_eg_length],
             source=2,
-            destination=0)
+            destination=0
+            )
 
         data[ex_index, :active_eg_length, :, :] = eg_chain_draw_block
 
@@ -164,7 +138,8 @@ def _stack_draws(
             "chain": np.arange(n_chains),
             "draw": np.arange(n_draws),
         },
-        name=name)
+        name=name
+        )
 
 
 def _stack_vectors(
@@ -174,10 +149,6 @@ def _stack_vectors(
     active_eg_lengths: list[int],
     name: str
 ) -> xr.DataArray:
-    """
-    Stack vectors for Ex bins into one DataArray with dims (Ex, Eg).
-    
-    """
 
     data = np.full((len(ex_values), len(eg_axis)), np.nan, dtype=np.float64)
 
@@ -210,10 +181,6 @@ def _stack_operators(
     active_eg_lengths: list[int],
     name: str
 ) -> xr.DataArray:
-    """
-    Stack operator matrices per Ex into one DataArray with dims (Ex, Eg_in, Eg_out).
-    
-    """
 
     data = np.full(
         (len(ex_values), len(eg_axis), len(eg_axis)),
@@ -248,82 +215,41 @@ def _stack_operators(
         name=name
     )
 
+def background_reference_from_off(
+    n_off_obs: np.ndarray,
+    a0: float,
+) -> tuple[np.ndarray, float]:
 
-def _background_b0_from_off_counts(
-    n_off_observed: np.ndarray,
-    background_alpha: float,
-) -> float:
-    """
-    Return the Gamma prior rate b0 used by the background model.
-    
-    """
-
-    n_off_observed = require_finite_array(
-        n_off_observed,
-        "n_off_observed",
-        ndim=1,
-        nonnegative=True
-    )
-    background_alpha = require_float(
-        background_alpha,
-        "background_alpha",
-        minimum=0.0,
-        minimum_inclusive=False
-    )
-
-    mean_off = float(np.mean(n_off_observed))
+    mean_off = float(np.mean(n_off_obs))
 
     if mean_off <= 0.0:
-        raise ValueError(
-            "Cannot set the background Gamma rate because the mean OFF count "
-            "is not positive."
-        )
+        raise ValueError("Mean OFF count must be positive.")
 
-    return background_alpha / mean_off
+    b0 = a0 / mean_off
+    background_reference = (a0 + n_off_obs) / (b0 + 1.0)
 
-
-def _background_postmean_from_off_counts(
-    n_off_observed: np.ndarray,
-    background_alpha: float,
-    background_b0: float,
-) -> np.ndarray:
-    """
-    Return the Gamma-Poisson posterior mean background from OFF counts.
+    return background_reference, b0
     
-    """
+    
+def target_accept_for_ex(
+    ex: float,
+    nuts_config: dict,
+) -> float:
 
-    n_off_observed = require_finite_array(
-        n_off_observed,
-        "n_off_observed",
-        ndim=1,
-        nonnegative=True
-    )
-    background_alpha = require_float(
-        background_alpha,
-        "background_alpha",
-        minimum=0.0,
-        minimum_inclusive=False
-    )
-    background_b0 = require_float(
-        background_b0,
-        "background_b0",
-        minimum=0.0,
-        minimum_inclusive=False
-    )
+    for rule in nuts_config.get("target_accept_by_ex", []):
+        lower, upper = map(float, rule["range"])
 
-    return (background_alpha + n_off_observed) / (background_b0 + 1.0)
+        if lower <= ex < upper:
+            return float(rule["value"])
+
+    return float(nuts_config["target_accept"])
 
 
-def _sampler_backend_from_config(sample_config: dict) -> str:
-    """Return the configured NUTS backend name."""
-
-    nuts_config = sample_config.get("nuts", {})
-    return str(nuts_config.get("nuts_sampler", "pymc")).strip().lower()
 
 
 class UnfoldManager:
     """
-    Unfolding run for the Ex bins selected by the run configuration.
+    Unfolding run for the Ex bins given by the run configuration.
     
     """
 
@@ -342,9 +268,25 @@ class UnfoldManager:
         self.eg_axis = data_loader.Eg
         self.ex_axis = data_loader.Ex
         
-        
         self.has_truth = bool(getattr(data_loader, "has_truth", True))
-        self.x_true_matrix = data_loader.x_true if self.has_truth else None
+
+        self.reference_matrices = {}
+
+        if self.has_truth:
+            x_true = data_loader.x_true
+            G_in = data_loader.G_in
+
+            x_mixed = x_true if G_in is None else G_in @ x_true
+
+            self.reference_matrices = {
+                "x_true": x_true,
+                "x_mixed_true": x_mixed,
+                "eta_true": data_loader.eta,
+                "nu_true": data_loader.nu,
+            }
+
+        self.reference_by_ex = {name: [] for name in self.reference_matrices }
+        
 
         if self.include_background:
             self.background_model_kind = str(config.background_model.kind).strip()
@@ -363,40 +305,35 @@ class UnfoldManager:
             self.background_alpha = np.nan
 
         self.response_db = str(config.response_db)
-        self.sigma_eg_gen = str(data_loader.resp_norm_sigma)
-        self.sigma_eg_unfold = str(config.sigma_eg_unfold)
+        self.fwhm_eg_unfold = str(config.fwhm_eg_unfold)
 
-        if self.sigma_eg_unfold == self.sigma_eg_gen:
+        if not self.has_truth or self.fwhm_eg_unfold == data_loader.fwhm_eg_gen:
             self.response_unfold = data_loader.resp
         else:
             self.response_unfold = (
                 om.response.Response.from_db(self.response_db)
-                .normalize_sigma(data_loader.resp_norm_anchor, self.sigma_eg_unfold)
+                .normalize_FWHM("1330keV", self.fwhm_eg_unfold)
             )
 
         self.ex_requested = self._selected_ex_values(config)
 
         if not self.ex_requested:
-            raise ValueError("No Ex bins were selected for unfolding.")
+            raise ValueError("No Ex bins were chosen for unfolding.")
 
         self.selected_indices = [self.n_matrix.index_X(value) for value in self.ex_requested]
 
         self.prior_config_path = repo_path(config.prior_config)
-        prior_config = load_prior_config(self.prior_config_path)
-        self.prior_mapper = ProfileMapper(
-            profiles=prior_config["profiles"],
-            mapping=prior_config["mapping"],
-        )
+        self.prior_settings = load_prior_config(self.prior_config_path)
 
         self.sample_config_path = repo_path(config.sample_config)
         self.sample_config_template = load_sampler_config(self.sample_config_path)
-        self.sampler_mapper = SamplerMapper(self.sample_config_template)
-        self.sampler_backend = _sampler_backend_from_config(self.sample_config_template)
+
+        self.sampler_backend = str(self.sample_config_template["nuts"].get("nuts_sampler", "pymc")).strip().lower()
 
         self.x_draws_by_ex: list[np.ndarray] = []
         self.background_draws_by_ex: list[np.ndarray | None] = []
 
-        self.x_true_by_ex: list[np.ndarray] = []
+        
         self.x_rl_by_ex: list[np.ndarray | None] = []
         self.eta_rl_by_ex: list[np.ndarray | None] = []
         self.prior_sigma_by_ex: list[np.ndarray | None] = []
@@ -420,11 +357,10 @@ class UnfoldManager:
 
         self.sampling_time_s_by_ex: list[float] = []
         self.target_accept_by_ex: list[float] = []
-        self.max_treedepth_by_ex: list[int] = []
-        self.nuts_random_seed_by_ex: list[int] = []
+        
 
     def _selected_ex_values(self, config: argparse.Namespace) -> list[float]:
-        """Return requested Ex values from the run configuration."""
+    
 
         if getattr(config, "ex_energies", None) is not None:
             return [float(value) for value in config.ex_energies]
@@ -443,17 +379,13 @@ class UnfoldManager:
 
         return [float(value) for value in np.asarray(self.ex_axis, dtype=float)]
 
-    def run_unfolding(self) -> None:
-        """
-        Run unfolding and write the result NetCDF file
-        """
+    def run_unfolding(self, save: bool = True) -> None:
 
         if self.debug:
-            print("\n=== Starting unfolding run ===")
+            print("\n----Starting unfolding run----")
 
-        run_dir = _run_dir(self.config)
-        draws_path = _draws_path(self.config)
-        run_dir.mkdir(parents=True, exist_ok=True)
+        if save:
+            _run_dir(self.config).mkdir(parents=True, exist_ok=True)
 
         mode = str(self.config.mode).lower().strip()
 
@@ -463,40 +395,22 @@ class UnfoldManager:
         for row_index, ex_index in enumerate(self.selected_indices):
             self._run_one_ex_unfolding(row_index, ex_index, mode)
 
-        self.finalize_and_save(draws_path)
+        if save:
+            self.finalize_and_save(_draws_path(self.config))
 
-    def _background_reference_for_rl(
-        self,
-        n_observed: np.ndarray,
-        n_off_observed: np.ndarray | None,
-        background_b0: float,
-    ) -> np.ndarray:
-        """
-        Return the fixed background reference used by the RL prior reference
-        
-        """
-
-        if not self.include_background:
-            return np.zeros_like(n_observed, dtype=np.float64)
-
-        if n_off_observed is None:
-            raise ValueError("Background-aware RL requires n_off_observed.")
-
-        return _background_postmean_from_off_counts(
-            n_off_observed,
-            self.background_alpha,
-            background_b0,
-        )
+    
     
 
     def _run_one_ex_unfolding(self, row_index: int, ex_index: int, mode: str) -> None:
-        """
-        Run unfolding for one selected Ex bin
-        
-        """
 
         ex_requested = float(self.ex_requested[row_index])
         ex_actual = float(self.ex_axis[ex_index])
+        
+        ex_index_axis = self.n_matrix.X_index
+
+        ex_left = float(ex_index_axis.left_edge(ex_index))
+        ex_right = float(ex_index_axis.right_edge(ex_index))
+        ex_center = float(ex_index_axis.mid(ex_index))
 
         active_eg_slice = self.data_loader.eg_slice_for_index(ex_index)
         active_eg_length = active_eg_slice.stop
@@ -506,73 +420,63 @@ class UnfoldManager:
         self.active_eg_lengths.append(active_eg_length)
 
         n_cut = self.n_matrix.iloc[ex_index, active_eg_slice]
-        n_observed = require_finite_array(
+        n_obs = require_finite_array(
             n_cut.values,
-            "n_observed",
+            "n_obs",
             ndim=1,
             nonnegative=True,
         )
-        self.n_observed_by_ex.append(n_observed)
+        self.n_observed_by_ex.append(n_obs)
 
-        n_off_observed = None
+        n_off_obs = None
         background_b0 = np.nan
 
         if self.include_background:
-            n_off_observed = require_finite_array(
+            n_off_obs = np.asarray(
                 self.n_off_matrix.iloc[ex_index, active_eg_slice].values,
-                "n_off_observed",
-                ndim=1,
-                nonnegative=True,
+                dtype=np.float64,
             )
-            background_b0 = _background_b0_from_off_counts(
-                n_off_observed,
-                self.background_alpha,
+            background_reference, background_b0 = background_reference_from_off(
+                n_off_obs, self.background_alpha
             )
-            self.n_off_observed_by_ex.append(n_off_observed)
         else:
-            self.n_off_observed_by_ex.append(None)
+            background_reference = np.zeros_like(n_obs, dtype=np.float64)
 
-        self.background_b0_by_ex.append(float(background_b0))
+        self.n_off_observed_by_ex.append(n_off_obs)
+        self.background_b0_by_ex.append(background_b0)
 
-        background_reference = self._background_reference_for_rl(
-            n_observed=n_observed,
-            n_off_observed=n_off_observed,
-            background_b0=background_b0,
-        )
 
-        if self.has_truth:
-            x_true = require_finite_array(
-                self.x_true_matrix.iloc[ex_index, active_eg_slice].values,
-                "x_true",
-                ndim=1,
-                nonnegative=True,
+        for name, matrix in self.reference_matrices.items():
+            values = np.asarray(
+                matrix.iloc[ex_index, active_eg_slice].values, dtype=np.float64
             )
-            self.x_true_by_ex.append(x_true)
-        else:
-            self.x_true_by_ex.append(None)
+            self.reference_by_ex[name].append(values)
 
         D_cut, G_g_cut = self.response_unfold.specialize_like(n_cut)
 
         D = np.asarray(D_cut.values, dtype=np.float64)
         G_g = np.asarray(G_g_cut.values, dtype=np.float64)
-        response_matrix = D @ G_g
+        R = D @ G_g
 
         self.D_by_ex.append(D)
         self.G_g_by_ex.append(G_g)
 
-        prior_profile = copy.deepcopy(self.prior_mapper.profile_for(ex_requested))
-
         prior_config = make_prior(
-            prior_profile,
-            response_matrix=response_matrix,
-            gamma_resolution_matrix=G_g,
-            n_on=n_observed,
+            settings=self.prior_settings,
+            R=R,
+            G_g=G_g,
+            n_obs=n_obs,
             background_reference=background_reference,
         )
-        
+                
         self._store_prior_outputs(prior_config)
 
-        sample_config = self.sampler_mapper.config_for(ex_requested)
+        sample_config = copy.deepcopy(self.sample_config_template)
+        nuts_config = sample_config["nuts"]
+
+        nuts_config["target_accept"] = target_accept_for_ex(ex_requested, nuts_config)
+        nuts_config.pop("target_accept_by_ex", None)
+
         sample_config["transform"] = str(self.config.transform)
         sample_config["background_model"] = {
             "kind": self.background_model_kind,
@@ -580,24 +484,25 @@ class UnfoldManager:
         }
 
         self.target_accept_by_ex.append(float(sample_config["nuts"]["target_accept"]))
-        self.max_treedepth_by_ex.append(int(sample_config["nuts"]["max_treedepth"]))
-        self.nuts_random_seed_by_ex.append(int(sample_config["nuts"]["random_seed"]))
-
+        
         if self.debug:
             print(
-                f"\n[Ex_req {ex_requested:.0f} keV] -> Ex={ex_actual:.0f} keV | "
+                f"\n[Ex_req {ex_requested:.0f} keV] "
+                f"-> Ex bin=[{ex_left:.0f}, {ex_right:.0f}) keV "
+                f"(center={ex_center:.0f} keV) | "
                 f"Eg bins={active_eg_length} | "
                 f"background={self.include_background} | mode={mode} | "
                 f"backend={self.sampler_backend} | "
                 f"target_accept={sample_config['nuts']['target_accept']}"
             )
+        
 
             rl_iteration = self.rl_iteration_by_ex[-1]
             rl_change_noise_ratio = self.rl_change_noise_ratio_by_ex[-1]
 
             if np.isfinite(rl_iteration):
                 print(
-                    f"[prior] RL iteration={rl_iteration:.0f}, "
+                    f"RL iteration={rl_iteration:.0f}, "
                     f"change/noise={rl_change_noise_ratio:.4g}"
                 )
         trace_path = _trace_path(
@@ -615,46 +520,31 @@ class UnfoldManager:
         )
 
         x_draws, background_draws = unfolder.unfold(
-            n_obs=n_observed,
-            n_off_obs=n_off_observed,
-            D=D,
-            G_g=G_g,
+            n_obs=n_obs,
+            n_off_obs=n_off_obs,
+            R=R,
             mode=mode,
             include_background=self.include_background,
-            output_trace_path=trace_path,
-            debug=self.debug,
+            output_trace_path=trace_path
         )
 
         sampling_time_s = time.perf_counter() - start_time
         self.sampling_time_s_by_ex.append(sampling_time_s)
 
-        self.x_draws_by_ex.append(
-            _as_chain_draw_eg(
-                x_draws,
-                active_eg_length,
-                f"x_draws Ex={ex_requested:.0f}",
-            )
-        )
+        self.x_draws_by_ex.append(x_draws)
 
         if self.include_background and background_draws is not None:
-            self.background_draws_by_ex.append(
-                _as_chain_draw_eg(
-                    background_draws,
-                    active_eg_length,
-                    f"background_draws Ex={ex_requested:.0f}",
-                )
-            )
+            self.background_draws_by_ex.append(background_draws)
         else:
             self.background_draws_by_ex.append(None)
 
         if self.debug:
             print(
-                f"[timing] Ex_req {ex_requested:.0f} keV: "
+                f"Ex_req {ex_requested:.0f} keV: "
                 f"sampling_time_s={sampling_time_s:.1f}"
             )
 
     def _store_prior_outputs(self, prior_config: dict) -> None:
-        """Store prior reference vectors and RL diagnostics."""
 
         x_rl = prior_config.get("x_rl", None)
         eta_rl = prior_config.get("eta_rl", None)
@@ -663,37 +553,25 @@ class UnfoldManager:
 
         self.x_rl_by_ex.append(None if x_rl is None else np.asarray(x_rl, dtype=np.float64))
         self.eta_rl_by_ex.append(None if eta_rl is None else np.asarray(eta_rl, dtype=np.float64))
-        self.prior_sigma_by_ex.append(
-            None if prior_sigma is None else np.asarray(prior_sigma, dtype=np.float64)
-        )
+        self.prior_sigma_by_ex.append(None if prior_sigma is None else np.asarray(prior_sigma, dtype=np.float64))
         self.prior_sigma_shape_by_ex.append(
-            None
-            if prior_sigma_shape is None
+            None if prior_sigma_shape is None
             else np.asarray(prior_sigma_shape, dtype=np.float64)
         )
 
-        metadata = prior_config.get("meta", {}) or {}
+        rl_details = prior_config.get("rl_details", {})
 
-        rl_iteration = metadata.get("rl_iteration", None)
-        rl_delta_eta = metadata.get("rl_delta_eta", None)
-        rl_noise_level = metadata.get("rl_noise_level", None)
-        rl_change_noise_ratio = metadata.get("rl_change_noise_ratio", None)
-
-        self.rl_iteration_by_ex.append(
-            np.nan if rl_iteration is None else float(rl_iteration)
-        )
-        self.rl_delta_eta_by_ex.append(
-            np.nan if rl_delta_eta is None else float(rl_delta_eta)
-        )
-        self.rl_noise_level_by_ex.append(
-            np.nan if rl_noise_level is None else float(rl_noise_level)
-        )
-        self.rl_change_noise_ratio_by_ex.append(
-            np.nan if rl_change_noise_ratio is None else float(rl_change_noise_ratio)
-        )
+        rl_iteration = rl_details.get("rl_iteration")
+        rl_delta_eta = rl_details.get("rl_delta_eta")
+        rl_noise_level = rl_details.get("rl_noise_level")
+        rl_change_noise_ratio = rl_details.get("rl_change_noise_ratio")
+        
+        self.rl_iteration_by_ex.append(np.nan if rl_iteration is None else float(rl_iteration))
+        self.rl_delta_eta_by_ex.append(np.nan if rl_delta_eta is None else float(rl_delta_eta))
+        self.rl_noise_level_by_ex.append(np.nan if rl_noise_level is None else float(rl_noise_level))
+        self.rl_change_noise_ratio_by_ex.append(np.nan if rl_change_noise_ratio is None else float(rl_change_noise_ratio))
 
     def finalize_and_save(self, result_nc_path: str | Path) -> None:
-        """Collect per-Ex results and write one NetCDF file."""
 
         result_nc_path = Path(result_nc_path)
         result_nc_path.parent.mkdir(parents=True, exist_ok=True)
@@ -711,37 +589,41 @@ class UnfoldManager:
                 ex_actual_values,
                 eg_axis,
                 list(active_eg_lengths),
-                "x",
-            ),
-            "x_true": _stack_vectors(
-                self.x_true_by_ex,
-                ex_actual_values,
-                eg_axis,
-                list(active_eg_lengths),
-                "x_true",
+                "x"
             ),
             "n_obs": _stack_vectors(
                 self.n_observed_by_ex,
                 ex_actual_values,
                 eg_axis,
                 list(active_eg_lengths),
-                "n_obs",
+                "n_obs"
             ),
             "D": _stack_operators(
                 self.D_by_ex,
                 ex_actual_values,
                 eg_axis,
                 list(active_eg_lengths),
-                "D",
+                "D"
             ),
             "G_g": _stack_operators(
                 self.G_g_by_ex,
                 ex_actual_values,
                 eg_axis,
                 list(active_eg_lengths),
-                "G_g",
-            ),
+                "G_g"
+            )
         }
+
+
+
+        for name, vectors in self.reference_by_ex.items():
+            dataset_variables[name] = _stack_vectors(
+                vectors,
+                ex_actual_values,
+                eg_axis,
+                list(active_eg_lengths),
+                name
+            )
 
         if self.include_background:
             background_draw_arrays: list[np.ndarray] = []
@@ -751,7 +633,7 @@ class UnfoldManager:
                     reference = _as_chain_draw_eg(
                         self.x_draws_by_ex[ex_index],
                         int(active_eg_lengths[ex_index]),
-                        f"x[{ex_index}]",
+                        f"x[{ex_index}]"
                     )
                     background_draw_arrays.append(
                         np.full_like(reference, np.nan, dtype=np.float64)
@@ -764,7 +646,7 @@ class UnfoldManager:
                 ex_actual_values,
                 eg_axis,
                 list(active_eg_lengths),
-                "bg_exp",
+                "bg_exp"
             )
 
             dataset_variables["n_off_obs"] = _stack_vectors(
@@ -772,7 +654,7 @@ class UnfoldManager:
                 ex_actual_values,
                 eg_axis,
                 list(active_eg_lengths),
-                "n_off_obs",
+                "n_off_obs"
             )
 
         if any(value is not None for value in self.x_rl_by_ex):
@@ -781,7 +663,7 @@ class UnfoldManager:
                 ex_actual_values,
                 eg_axis,
                 list(active_eg_lengths),
-                "x_rl",
+                "x_rl"
             )
 
         if any(value is not None for value in self.eta_rl_by_ex):
@@ -790,7 +672,7 @@ class UnfoldManager:
                 ex_actual_values,
                 eg_axis,
                 list(active_eg_lengths),
-                "eta_rl",
+                "eta_rl"
             )
 
         if any(value is not None for value in self.prior_sigma_by_ex):
@@ -799,7 +681,7 @@ class UnfoldManager:
                 ex_actual_values,
                 eg_axis,
                 list(active_eg_lengths),
-                "prior_sigma",
+                "prior_sigma"
             )
 
         if any(value is not None for value in self.prior_sigma_shape_by_ex):
@@ -808,7 +690,7 @@ class UnfoldManager:
                 ex_actual_values,
                 eg_axis,
                 list(active_eg_lengths),
-                "prior_sigma_shape",
+                "prior_sigma_shape"
             )
 
         ds = xr.Dataset(dataset_variables).assign_coords(
@@ -824,14 +706,6 @@ class UnfoldManager:
         )
         ds["target_accept"] = xr.DataArray(
             np.asarray(self.target_accept_by_ex, dtype=np.float64),
-            dims=("Ex",),
-        )
-        ds["max_treedepth"] = xr.DataArray(
-            np.asarray(self.max_treedepth_by_ex, dtype=np.int64),
-            dims=("Ex",),
-        )
-        ds["nuts_random_seed"] = xr.DataArray(
-            np.asarray(self.nuts_random_seed_by_ex, dtype=np.int64),
             dims=("Ex",),
         )
 
@@ -858,59 +732,37 @@ class UnfoldManager:
                 dims=("Ex",),
             )
 
-        self._add_dataset_metadata(ds)
+        self._add_dataset_settings(ds)
 
         ds.to_netcdf(str(result_nc_path), engine="h5netcdf")
-        print(f"Saved draws -> {result_nc_path}")
+        print(f"Saved draws to path: {result_nc_path}")
 
-    def _add_dataset_metadata(self, ds: xr.Dataset) -> None:
-        """Add run and data-generation metadata to the output dataset."""
-
-        ds.attrs["run_id"] = str(self.config.run_id)
-        ds.attrs["mode"] = str(self.config.mode)
-        ds.attrs["include_background"] = "true" if self.include_background else "false"
-        ds.attrs["background_model"] = self.background_model_kind
-        ds.attrs["bg_a0"] = (
-            float(self.background_alpha) if self.include_background else "none"
+    def _add_dataset_settings(self, ds: xr.Dataset) -> None:
+        ds.attrs.update(
+            dataset_id=str(self.config.dataset_id),
+            run_id=str(self.config.run_id),
+            mode=str(self.config.mode),
+            sampler_backend=self.sampler_backend,
+            prior_config=str(self.config.prior_config),
+            sample_config=str(self.config.sample_config),
         )
-        ds.attrs["likelihood"] = "poisson"
-        ds.attrs["transform"] = str(self.config.transform)
-        ds.attrs["sampler_backend"] = self.sampler_backend
 
-        ds.attrs["response_db"] = self.response_db
-        ds.attrs["sigma_eg_gen"] = self.sigma_eg_gen
-        ds.attrs["sigma_eg_unfold"] = self.sigma_eg_unfold
+        for key, value in self.data_loader.run_settings.items():
+            if value is not None:
+                ds.attrs[key] = (
+                    str(value).lower() if isinstance(value, bool) else value
+                )
 
-        ds.attrs["prior_config"] = str(self.prior_config_path)
-        ds.attrs["sample_config"] = str(self.sample_config_path)
-
-        if "random_seed" in self.sample_config_template["prior"]:
-            ds.attrs["prior_random_seed"] = int(
-                self.sample_config_template["prior"]["random_seed"]
-            )
-
-        for key, value in self.data_loader.metadata.items():
-            attr_key = f"loader_{key}"
-
-            if value is None:
-                ds.attrs[attr_key] = "none"
-            elif isinstance(value, (bool, np.bool_)):
-                ds.attrs[attr_key] = "true" if bool(value) else "false"
-            elif isinstance(value, (tuple, list)):
-                ds.attrs[attr_key] = ",".join(str(item) for item in value)
-            elif isinstance(value, np.integer):
-                ds.attrs[attr_key] = int(value)
-            elif isinstance(value, np.floating):
-                ds.attrs[attr_key] = float(value)
-            else:
-                ds.attrs[attr_key] = value
+        if self.include_background:
+            ds.attrs["background_model"] = self.background_model_kind
+            ds.attrs["bg_a0"] = self.background_alpha
+            
+        ds.attrs["target_accept"] = float(
+            self.sample_config_template["nuts"]["target_accept"])
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description=
-        "Run Bayesian unfolding. Chains are always stored separately."
-    )
+    parser = argparse.ArgumentParser(description="Run Bayesian unfolding.")
     parser.add_argument("-c", "--config", required=True, help="Path to YAML run config.")
     cli = parser.parse_args()
 
@@ -927,25 +779,11 @@ def main() -> None:
             rebin_factors=tuple(config.rebin_factors),
             lower_eg_cut=config.lower_eg_cut,
             include_background=config.include_background,
-            sigma_eg=getattr(config, "sigma_eg_unfold", getattr(config, "sigma_eg_gen", "30keV")),
-            eg_margin_kev=getattr(config, "eg_margin_kev", 200.0),
+            fwhm_eg_unfold=config.fwhm_eg_unfold,
+            eg_margin=getattr(config, "eg_margin", "200keV"),
         )
     elif dataset_kind == "synthetic":
-        loader = SyntheticDataLoader(
-            mat_path=config.mat_path,
-            response_db=config.response_db,
-            rebin_factors=tuple(config.rebin_factors),
-            mat_scale=config.mat_scale,
-            lower_eg_cut=config.lower_eg_cut,
-            include_background=config.include_background,
-            rng_seed=config.rng_seed,
-            sigma_eg=config.sigma_eg_gen,
-            bg_fraction=config.bg_fraction,
-            bg_flat_fraction=config.bg_flat_fraction,
-            eg_tail_mass=config.eg_tail_mass,
-            include_ex_smearing=config.include_ex_smearing,
-            fwhm_ex_kev=config.fwhm_ex_kev,
-        )
+        loader = SyntheticDataLoader.from_config(config)
     else:
         raise ValueError("dataset_kind must be synthetic or experimental.")
 

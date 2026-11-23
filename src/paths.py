@@ -1,4 +1,6 @@
-"""Project-root path helpers."""
+"""
+Helpers for project paths.
+"""
 
 from __future__ import annotations
 
@@ -16,8 +18,6 @@ FIGURES_DIR = PROJECT_ROOT / "figures"
 
 
 def repo_path(path: str | Path) -> Path:
-    """Resolve a path relative to the project root unless it is absolute."""
-
     path = Path(path).expanduser()
 
     if path.is_absolute():
@@ -27,8 +27,17 @@ def repo_path(path: str | Path) -> Path:
 
 
 def ensure_dir(path: str | Path) -> Path:
-    """Resolve a directory path and create it if needed."""
-
     resolved = repo_path(path)
     resolved.mkdir(parents=True, exist_ok=True)
     return resolved
+
+
+def result_dir(config: dict, family: str) -> Path:
+    kind = config.get("dataset_kind", "synthetic")
+    root = repo_path(config.get("output_dir", "results")) / kind
+    dataset = str(config["dataset_id"])
+    return root / family / dataset if kind == "synthetic" else root / dataset / family
+
+
+def bayes_run_dir(config: dict) -> Path:
+    return result_dir(config, "bayes") / config["run_id"] / config["mode"]

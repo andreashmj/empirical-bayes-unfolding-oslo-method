@@ -1,6 +1,5 @@
 """
-Synthetic-data overview figure. The figure shows the emitted truth matrix, the observed ON-count matrix, and
-selected one-dimensional gamma-energy slices from both matrices.
+Figure illustrating the synthetic data generation. 
 """
 
 from __future__ import annotations
@@ -13,461 +12,140 @@ from matplotlib.colors import LogNorm
 from matplotlib.lines import Line2D
 from matplotlib.ticker import LogFormatterSciNotation, LogLocator
 
-from ...paths import DATA_DIR, repo_path
+from ...config_utils import load_run_config
+from ...paths import repo_path
 from ...synthetic_data import SyntheticDataLoader
-from ..plot_utils import (
-    add_panel_label,
-    add_top_legend,
-    add_zero_line,
-    save_or_show,
-    set_symlog_y_with_room,
-    steps,
-    use_MeV_on_xaxis,
-    use_MeV_on_yaxis,
-)
+from ..plot_utils import add_panel_label, add_top_legend, add_zero_line, save_or_show, set_symlog_y_with_room, steps, use_MeV_on_xaxis, use_MeV_on_yaxis
 from ..style import COLORS, apply_axes_style, figure_size
 
 
-def _bin_edges(centers: np.ndarray) -> np.ndarray:
-
-    centers = np.asarray(centers, dtype=float).reshape(-1)
-
-    if centers.size == 1:
-        return np.array([centers[0] - 0.5, centers[0] + 0.5], dtype=float)
-
-    midpoints = 0.5 * (centers[:-1] + centers[1:])
-    first_edge = centers[0] - (midpoints[0] - centers[0])
-    last_edge = centers[-1] + (centers[-1] - midpoints[-1])
-
-    return np.concatenate([[first_edge], midpoints, [last_edge]])
-
-
-def _chosen_ex_indices(ex_axis: np.ndarray, ex_values: tuple[float, float]) -> list[int]:
-    if len(ex_values) != 2:
-        raise ValueError("data_generation uses exactly two Ex slices.")
-
-    indices = []
-
-    for ex_value in ex_values:
-        index = np.argmin(np.abs(ex_axis - float(ex_value))).item()
-
-        if index not in indices:
-            indices.append(index)
-
-    if len(indices) != 2:
-        raise ValueError("The two requested Ex values map to the same matrix row.")
-
-    return indices
-
-
-def _positive_norm(values_a: np.ndarray, values_b: np.ndarray) -> LogNorm:
-    positive_values = np.concatenate([values_a.ravel(), values_b.ravel()])
-    positive_values = positive_values[
-        np.isfinite(positive_values) & (positive_values > 0.0)
-    ]
-
-    if positive_values.size == 0:
-        vmax = 1.0
-    else:
-        vmax = max(np.percentile(positive_values, 99.5).item(), 1.0)
-
-    return LogNorm(vmin=1.0, vmax=vmax)
-
-
-def _masked_positive(values: np.ndarray) -> np.ma.MaskedArray:
-    return np.ma.masked_where((~np.isfinite(values)) | (values <= 0.0), values)
-
-
-def _set_count_axis(
-    ax: plt.Axes,
-    arrays: list[np.ndarray],
-    linthresh: float,
-    top_factor: float = 2.0,
-    y_lower: float = -1.0,
-) -> None:
-    """
-    Apply a per-panel symlog count axis with large label headroom.
-    """
-
-    _, y_top = set_symlog_y_with_room(
-        ax,
-        arrays=arrays,
-        linthresh=linthresh,
-        top_factor=top_factor,
-        y_lower=y_lower,
-    )
-
-    add_zero_line(
-        ax,
-        color=COLORS["black"],
-        lw=0.45,
-        ls=":",
-        alpha=0.55,
-        zorder=1.1,
-    )
-
-    #_set_compact_symlog_ticks(ax, y_top=y_top)
-
-
-def _set_compact_symlog_ticks(ax: plt.Axes, y_top: float) -> None:
-    """
-    Use count ticks that avoid crowding 0 and 10^0 on symlog axes.
-    """
-
-    if not np.isfinite(y_top) or y_top <= 0.0:
-        return
-
-    ticks = [0.0]
-    max_exponent = int(np.ceil(np.log10(max(y_top, 10.0))))
-
-    for exponent in range(1, max_exponent + 1):
-        tick = 10.0**exponent
-        if tick <= 1.05 * y_top:
-            ticks.append(tick)
-
-    ax.set_yticks(ticks)
-
-
-def _add_selected_ex_guides(
-    axes: tuple[plt.Axes, plt.Axes],
-    ex_edges: np.ndarray,
-    ex_axis: np.ndarray,
-    selected_indices: list[int],
-    colors: list[str],
-) -> None:
-    """
-    Mark selected Ex rows in the matrix panels.
-    """
-
-    for color, index in zip(colors, selected_indices):
-        ex_low = ex_edges[index]
-        ex_high = ex_edges[index + 1]
-        ex_center = ex_axis[index]
-
-        for ax in axes:
-            ax.axhspan(
-                ex_low,
-                ex_high,
-                facecolor=color,
-                alpha=0.18,
-                edgecolor=color,
-                linewidth=0.8,
-                zorder=3,
-            )
-            ax.axhline(
-                ex_center,
-                color=color,
-                lw=0.9,
-                ls="-",
-                zorder=4,
-            )
-
-
-def _center_colorbar_under_matrices(
-    cax: plt.Axes,
-    ax_left: plt.Axes,
-    ax_right: plt.Axes,
-    width_ratio: float = 0.68,
-    y_offset: float = 0.052,
-    height: float = 0.022,
-) -> None:
-
-    left_position = ax_left.get_position()
-    right_position = ax_right.get_position()
-
-    matrix_x0 = left_position.x0
-    matrix_x1 = right_position.x1
-    matrix_width = matrix_x1 - matrix_x0
-
-    colorbar_width = matrix_width * float(width_ratio)
-    colorbar_x0 = matrix_x0 + 0.5 * (matrix_width - colorbar_width)
-
-    cax.set_position(
-        [
-            colorbar_x0,
-            left_position.y0 - float(y_offset),
-            colorbar_width,
-            float(height),
-        ]
-    )
-
-
-def _plot_slice(
-    ax: plt.Axes,
-    eg_axis: np.ndarray,
-    values: np.ndarray,
-    color: str,
-    active_eg_length: int,
-) -> None:
-    """
-    Plot one selected Ex slice and mark its active Eg boundary.
-    """
-
-    steps(
-        ax,
-        eg_axis,
-        values,
-        color=color,
-        lw=0.25,
-        alpha=0.75,
-        zorder=3,
-    )
-
-    eg_max = eg_axis[int(active_eg_length) - 1]
-    ax.axvline(
-        eg_max,
-        color=COLORS["black"],
-        ls="--",
-        lw=0.75,
-        alpha=0.9,
-        zorder=2.5,
+def load_synthetic(config: dict) -> SyntheticDataLoader:
+    return SyntheticDataLoader(
+        mat_path=repo_path(config["mat_path"]),
+        response_db=config["response_db"],
+        rebin_factors=tuple(config["rebin_factors"]),
+        mat_scale=config["mat_scale"],
+        lower_eg_cut=config["lower_eg_cut"],
+        include_background=config["include_background"],
+        bg_fraction=config["bg_fraction"],
+        bg_flat_fraction=config["bg_flat_fraction"],
+        eg_tail_mass=config["eg_tail_mass"],
+        rng_seed=config["rng_seed"],
+        fwhm_eg_gen=config["fwhm_eg_gen"],
+        include_ex_smearing=config["include_ex_smearing"],
+        fwhm_ex_gen=config["fwhm_ex_gen"],
     )
 
 
 def plot_data_generation(
-    mat_path: str | Path | None = None,
+    config_path: str | Path,
     ex_values: tuple[float, float] = (2500.0, 8000.0),
-    response_db: str = "OSCAR2020",
-    rebin_factors: tuple[int, int] = (10, 2),
-    lower_eg_cut: str = "60keV",
-    sigma_eg: str = "30keV",
-    include_background: bool = True,
-    bg_fraction: float = 0.15,
-    bg_flat_fraction: float = 0.10,
-    mat_scale: float = 1.0,
-    eg_tail_mass: float = 1.0e-6,
-    rng_seed: int = 100,
-    include_ex_smearing: bool = False,
-    fwhm_ex_kev: float = 150.0,
     out: str | Path | None = None,
     show: bool = True,
 ) -> plt.Figure:
-    """
-    Create the synthetic-data generation overview figure.
-    """
 
-    if mat_path is None:
-        mat_path = DATA_DIR / "ExEg_1e8.npz"
+    config = load_run_config(repo_path(config_path))
 
-    loader = SyntheticDataLoader(
-        mat_path=repo_path(mat_path),
-        response_db=response_db,
-        rebin_factors=rebin_factors,
-        mat_scale=mat_scale,
-        lower_eg_cut=lower_eg_cut,
-        include_background=include_background,
-        bg_fraction=bg_fraction,
-        bg_flat_fraction=bg_flat_fraction,
-        eg_tail_mass=eg_tail_mass,
-        rng_seed=rng_seed,
-        sigma_eg=sigma_eg,
-        include_ex_smearing=include_ex_smearing,
-        fwhm_ex_kev=fwhm_ex_kev,
-    )
+    loader = load_synthetic(config)
+    emitted, observed = loader.x_true, loader.n
 
-    x_true_matrix = loader.x_true
-    n_obs_matrix = loader.n
+    values = (np.asarray(emitted.values), np.asarray(observed.values))
+    selected = [emitted.index_X(ex) for ex in ex_values]
+    
+    Ex = emitted.X_index.to_left()
+    Eg = emitted.Y_index.to_left()
+    
+    ex_edges = np.append(Ex.bins, Ex.rightmost)
+    eg_edges = np.append(Eg.bins, Eg.rightmost)
 
-    x_true = np.asarray(x_true_matrix.values, dtype=float)
-    n_obs = np.asarray(n_obs_matrix.values, dtype=float)
+    lengths = loader.active_eg_lengths
+    colors = (COLORS["blue"], COLORS["vermillion"])
 
-    ex_axis = np.asarray(x_true_matrix.Ex, dtype=float)
-    eg_axis = np.asarray(x_true_matrix.Eg, dtype=float)
+    positive = np.concatenate([v[v > 0] for v in values])
+    norm = LogNorm(1.0, max(float(np.percentile(positive, 99.5)), 1.01))
 
-    selected_indices = _chosen_ex_indices(ex_axis, ex_values)
-    active_eg_lengths = np.asarray(loader.active_eg_lengths, dtype=int)
-
-    ex_edges = _bin_edges(ex_axis)
-    eg_edges = _bin_edges(eg_axis)
-
-    colors = [COLORS["blue"], COLORS["vermillion"]]
-
-    size = figure_size("text", height_to_width=0.90)
-    fig = plt.figure(figsize=size.as_tuple(), constrained_layout=False)
-
+    fig = plt.figure(figsize=figure_size("text", height_to_width=0.90).as_tuple())
     grid = fig.add_gridspec(
-        4,
-        2,
-        height_ratios=[2.25, 0.20, 1.05, 1.05],
-        left=0.115,
-        right=0.975,
-        bottom=0.080,
-        top=0.925,
-        wspace=0.12,
-        hspace=0.22,
+        4, 2, height_ratios=[2.25, 0.20, 1.05, 1.05],
+        left=0.115, right=0.975, bottom=0.080, top=0.925,
+        wspace=0.12, hspace=0.22,
     )
+    matrices = [fig.add_subplot(grid[0, 0])]
+    matrices.append(fig.add_subplot(grid[0, 1], sharex=matrices[0], sharey=matrices[0]))
 
-    ax_x_matrix = fig.add_subplot(grid[0, 0])
-    ax_n_matrix = fig.add_subplot(grid[0, 1], sharex=ax_x_matrix, sharey=ax_x_matrix)
-    cax = fig.add_subplot(grid[1, :])
+    for ax, matrix, label in zip(matrices, values, "ab"):
+        image = ax.imshow(
+            np.ma.masked_less_equal(matrix, 0), origin="lower", aspect="auto",
+            extent=[eg_edges[0], eg_edges[-1], ex_edges[0], ex_edges[-1]],
+            norm=norm, cmap="viridis", interpolation="nearest", rasterized=True,
+        )
+        
+        for index, color in zip(selected, colors):
+            ax.axhspan(ex_edges[index], ex_edges[index + 1], facecolor=color, alpha=0.30, edgecolor=color, linewidth=0.8, zorder=3)
+            
+        ax.tick_params(labelbottom=False)
+        
+        use_MeV_on_xaxis(ax)
+        use_MeV_on_yaxis(ax)
+        
+        apply_axes_style(ax)
+        add_panel_label(ax, label, x=0.035, y=0.965, fontsize=9.0,
+                        box=True, box_alpha=0.72)
 
-    norm = _positive_norm(x_true, n_obs)
+    matrices[0].set_ylabel(r"Excitation energy $E_x$ (MeV)")
+    matrices[1].tick_params(labelleft=False)
 
-    image_x = ax_x_matrix.imshow(
-        _masked_positive(x_true),
-        origin="lower",
-        aspect="auto",
-        extent=[eg_edges[0], eg_edges[-1], ex_edges[0], ex_edges[-1]],
-        norm=norm,
-        cmap="viridis",
-        interpolation="nearest",
-        rasterized=True,
-    )
+    left, right = matrices[0].get_position(), matrices[1].get_position()
+    width = 0.68 * (right.x1 - left.x0)
+    cax = fig.add_axes([0.5 * (left.x0 + right.x1 - width), left.y0 - 0.04, width, 0.022])
 
-    ax_n_matrix.imshow(
-        _masked_positive(n_obs),
-        origin="lower",
-        aspect="auto",
-        extent=[eg_edges[0], eg_edges[-1], ex_edges[0], ex_edges[-1]],
-        norm=norm,
-        cmap="viridis",
-        interpolation="nearest",
-        rasterized=True,
-    )
-
-    ax_x_matrix.set_ylabel(r"Excitation energy $E_x$ (MeV)")
-    ax_x_matrix.tick_params(labelbottom=False)
-    ax_n_matrix.tick_params(labelbottom=False, labelleft=False)
-
-    use_MeV_on_xaxis(ax_x_matrix)
-    use_MeV_on_yaxis(ax_x_matrix)
-    use_MeV_on_xaxis(ax_n_matrix)
-    use_MeV_on_yaxis(ax_n_matrix)
-
-    apply_axes_style(ax_x_matrix)
-    apply_axes_style(ax_n_matrix)
-
-    colorbar = fig.colorbar(image_x, cax=cax, orientation="horizontal", extend="max")
+    colorbar = fig.colorbar(image, cax=cax, orientation="horizontal", extend="max")
     colorbar.ax.xaxis.set_major_locator(LogLocator(base=10.0, numticks=5))
     colorbar.ax.xaxis.set_major_formatter(LogFormatterSciNotation())
-    colorbar.set_label(r"Intensity (counts)", labelpad=2.0)
+
+    colorbar.set_label("Intensity (counts)", labelpad=2.0)
     colorbar.ax.tick_params(direction="in", length=3.0, width=0.8)
     colorbar.outline.set_linewidth(0.8)
 
-    _center_colorbar_under_matrices(
-        cax=cax,
-        ax_left=ax_x_matrix,
-        ax_right=ax_n_matrix,
-        width_ratio=0.68,
-        y_offset=0.04,
-        height=0.022,
-    )
+    labels = (("c", "d"), ("e", "f"))
+    ylabels = (r"$\boldsymbol{\mu}_{\mathrm{true}}$ (counts)", r"$\mathbf{n}$ (counts)")
+    
+    for row, (matrix, ylabel) in enumerate(zip(values, ylabels)):
+        for column, (index, color) in enumerate(zip(selected, colors)):
+            ax = fig.add_subplot(grid[row + 2, column], sharex=matrices[0])
+            counts = matrix[index]
+            steps(ax, Eg.bins, counts, color=color, lw=0.2, alpha=0.5, zorder=3)
+            
+            ax.axvline(eg_edges[int(lengths[index])], color=COLORS["black"], ls="--", lw=0.75, alpha=0.9, zorder=2.5)
+            _, top = set_symlog_y_with_room(ax, [counts], linthresh=5.0, top_factor=30.0, y_lower=-1.0)
 
-    _add_selected_ex_guides(
-        axes=(ax_x_matrix, ax_n_matrix),
-        ex_edges=ex_edges,
-        ex_axis=ex_axis,
-        selected_indices=selected_indices,
-        colors=colors,
-    )
+            ticks = 10.0 ** np.arange(1, int(np.ceil(np.log10(top))) + 1)
+            ax.set_yticks(np.r_[0.0, ticks[ticks <= top]])
+            add_zero_line(ax, color=COLORS["black"], lw=0.45, alpha=0.55)
 
-    ax_mu_left = fig.add_subplot(grid[2, 0], sharex=ax_x_matrix)
-    ax_mu_right = fig.add_subplot(grid[2, 1], sharex=ax_x_matrix)
-    ax_n_left = fig.add_subplot(grid[3, 0], sharex=ax_x_matrix)
-    ax_n_right = fig.add_subplot(grid[3, 1], sharex=ax_x_matrix)
+            if column == 0:
+                ax.set_ylabel(ylabel)
+            if row == 1:
+                ax.set_xlabel(r"Photon energy $E_\gamma$ (MeV)")
+            else:
+                ax.tick_params(labelbottom=False)
 
-    mu_axes = [ax_mu_left, ax_mu_right]
-    n_axes = [ax_n_left, ax_n_right]
+            use_MeV_on_xaxis(ax)
+            apply_axes_style(ax)
 
-    for column, (index, color) in enumerate(zip(selected_indices, colors)):
-        mu_values = np.asarray(x_true[index, :], dtype=float)
-        n_values = np.asarray(n_obs[index, :], dtype=float)
+            add_panel_label(ax, labels[row][column], x=0.04, y=0.90, fontsize=9.0)
 
-        _plot_slice(
-            ax=mu_axes[column],
-            eg_axis=eg_axis,
-            values=mu_values,
-            color=color,
-            active_eg_length=active_eg_lengths[index],
-        )
-        _plot_slice(
-            ax=n_axes[column],
-            eg_axis=eg_axis,
-            values=n_values,
-            color=color,
-            active_eg_length=active_eg_lengths[index],
-        )
+    matrices[0].set_xlim(-0.025 * eg_edges[-1], eg_edges[-1])
 
-        _set_count_axis(
-            mu_axes[column],
-            arrays=[mu_values],
-            linthresh=5.0,
-            top_factor=30.0,
-            y_lower=-1.0,
-        )
-        _set_count_axis(
-            n_axes[column],
-            arrays=[n_values],
-            linthresh=5.0,
-            top_factor=30.0,
-            y_lower=-1.0,
-        )
+    handles = [Line2D([0], [0], color=color, lw=1.1) for color in colors]
+    handles.append(Line2D([0], [0], color=COLORS["black"], lw=0.8, ls="--"))
 
-    ax_mu_left.set_ylabel(r"$\boldsymbol{\mu}_{\mathrm{true}}$ (counts)")
-    ax_n_left.set_ylabel(r"$\mathbf{n}$ (counts)")
+    labels = [rf"$E_x \approx {ex / 1000:.1f}\,\mathrm{{MeV}}$" for ex in ex_values]
+    add_top_legend(fig, handles, labels + [r"$E_\gamma^{\max}(E_x)$"],
+                   ncol=3, y=0.985, handlelength=1.8, columnspacing=1.2, fontsize=8.6)
 
-    ax_mu_left.tick_params(labelbottom=False)
-    ax_mu_right.tick_params(labelbottom=False)
-    ax_n_left.set_xlabel(r"Photon energy $E_\gamma$ (MeV)")
-    ax_n_right.set_xlabel(r"Photon energy $E_\gamma$ (MeV)")
+    for index in selected:
+        print(f"Selected Ex bin (keV): {ex_edges[index]:.2f}-{ex_edges[index + 1]:.2f}")
 
-    for ax in mu_axes + n_axes:
-        use_MeV_on_xaxis(ax)
-        apply_axes_style(ax)
-
-    x_right = eg_edges[-1]
-    x_left = -0.025 * x_right
-
-    for ax in [ax_x_matrix, ax_n_matrix] + mu_axes + n_axes:
-        ax.set_xlim(x_left, x_right)
-
-    legend_handles = []
-    legend_labels = []
-
-    for color, index in zip(colors, selected_indices):
-        legend_handles.append(Line2D([0], [0], color=color, lw=1.1))
-        legend_labels.append(
-            rf"$E_x \approx {ex_axis[index] / 1000.0:.1f}\,\mathrm{{MeV}}$"
-        )
-
-    legend_handles.append(Line2D([0], [0], color=COLORS["black"], lw=0.8, ls="--"))
-    legend_labels.append(r"$E_{\gamma}^{\max}(E_x)$")
-
-    add_top_legend(
-        fig,
-        handles=legend_handles,
-        labels=legend_labels,
-        ncol=3,
-        y=0.985,
-        frameon=False,
-        handlelength=1.8,
-        columnspacing=1.2,
-        fontsize=8.6,
-    )
-
-    # Matrix panels. Use a light box so the labels remain visible on the
-    # logarithmic colormaps.
-    for label, ax in zip("ab", [ax_x_matrix, ax_n_matrix]):
-        add_panel_label(
-            ax,
-            label=label,
-            x=0.035,
-            y=0.965,
-            fontsize=9.0,
-            box=True,
-            box_alpha=0.72,
-        )
-
-    # One-dimensional slice panels.
-    for label, ax in zip("cdef", [ax_mu_left, ax_mu_right, ax_n_left, ax_n_right]):
-        add_panel_label(
-            ax,
-            label=label,
-            x=0.04,
-            y=0.90,
-            fontsize=9.0,
-            box=False,
-        )
-
-    save_or_show(fig, out, tag="data-generation", show=show)
+    save_or_show(fig, repo_path(out) if out is not None else None, tag="data-generation", show=show)
     return fig

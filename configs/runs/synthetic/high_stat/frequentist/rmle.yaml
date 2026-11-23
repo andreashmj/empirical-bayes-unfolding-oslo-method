@@ -1,0 +1,5 @@
+ex_energies: [4000]
+
+freq_iterations: 10000
+freq_bootstrap: 1000
+freq_bootstrap_seed: 123

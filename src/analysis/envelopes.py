@@ -1,5 +1,6 @@
+
 """
-Global rank-envelope bands. Whole spectral curves are ranked by the extreme-rank-length ordering. The mean of samples are returned as the center of the curve.
+Create simultaneous bands from adaptive maximum-deviation envelopes.
 """
 
 from __future__ import annotations
@@ -7,116 +8,68 @@ from __future__ import annotations
 import numpy as np
 import xarray as xr
 
-from ..input_checks import require_float
-
-def midranks(values: np.ndarray, atol: float = 0.0) -> np.ndarray:
-    """
-    Computes the midranks for a one-dimensional array.
-    """
-
-    values = np.asarray(values, dtype=float).reshape(-1)
-    atol = require_float(atol, "atol", minimum=0.0)
-
-    order = np.argsort(values, kind="mergesort")
-    sorted_values = values[order]
-    sorted_ranks = np.empty(values.size, dtype=float)
-
-    start = 0
-    while start < values.size:
-        stop = start + 1
-
-        while stop < values.size and abs(sorted_values[stop] - sorted_values[start]) <= atol:
-            stop += 1
-
-        sorted_ranks[start:stop] = 0.5 * ((start + 1) + stop)
-        start = stop
-
-    ranks = np.empty(values.size, dtype=float)
-    ranks[order] = sorted_ranks
-
-    return ranks
 
 def _draw_matrix(draws: xr.DataArray) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Different checks before returning the Eg axis and the matrix of draws on this axis.
-    """
-
     if "sample" not in draws.dims or "Eg" not in draws.dims:
-        raise ValueError("draws must have dimensions sample and Eg.")
+        raise ValueError("draws must have sample and Eg dimensions")
 
-    eg_axis = np.asarray(draws["Eg"].values, dtype=float)
-    matrix = np.asarray(draws.transpose("sample", "Eg").values, dtype=float)
+    axis = np.asarray(draws["Eg"].values, dtype=float)
+    values = np.asarray(draws.transpose("sample", "Eg").values, dtype=float)
 
-    if matrix.ndim != 2:
-        raise ValueError(f"draws must be two-dimensional, got shape {matrix.shape}.")
-    if matrix.shape[0] < 2:
-        raise ValueError("At least two samples are required.")
-    if matrix.shape[1] != eg_axis.size:
-        raise ValueError("Eg coordinate length does not match draw matrix.")
-    if not np.all(np.isfinite(matrix)):
-        raise ValueError("draws contains non-finite values.")
-    return eg_axis, matrix
+    if values.ndim != 2 or values.shape[0] < 4 or not np.all(np.isfinite(values)):
+        raise ValueError("draws must contain at least four finite curves")
+
+    return axis, values
 
 
-def _least_extreme_indices(two_sided_ranks: np.ndarray, n_keep: int) -> np.ndarray:
-    """
-    Using ERL ordering to return least extreme curve indices.
-    """
-    sorted_ranks = np.sort(two_sided_ranks, axis=1)
-
-    # np.lexsort uses the last key as primary. Reversing the columns gives
-    # lexicographic ordering by smallest rank, then next smallest rank, etc.
-    keys = tuple(
-        sorted_ranks[:, column]
-        for column in range(sorted_ranks.shape[1] - 1, -1, -1)
-    )
-    order = np.lexsort(keys)
-
-    return order[-n_keep:]
+def _order_statistic(values: np.ndarray, mass: float) -> float:
+    k = int(np.ceil((len(values) + 1) * mass))
+    if k > len(values):
+        raise ValueError("Insufficient samples for the requested coverage")
+    return float(np.partition(values, k - 1)[k - 1])
 
 
-def global_rank_envelope(
+def adaptive_envelope(
     draws: xr.DataArray,
     mass: float = 0.95,
-    atol_ties: float = 0.0,
+    trim: float = 0.05,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    The global rank envelopes are given by the 
-    Eg, mean curve, lower band, and upper band.
-    
-    """
 
-    mass = require_float(
-        mass,
-        "mass",
-        minimum=0.0,
-        maximum=1.0,
-        minimum_inclusive=False,
-        maximum_inclusive=True,
-    )
-    atol_ties = require_float(atol_ties, "atol_ties", minimum=0.0)
+    if not 0.0 < mass < 1.0:
+        raise ValueError("mass must lie in (0,1)")
+    if not 0.0 <= trim < 1.0:
+        raise ValueError("trim must lie in [0,1)")
 
-    eg_axis, matrix = _draw_matrix(draws)
-    n_samples, n_eg = matrix.shape
+    axis, values = _draw_matrix(draws)
 
-    center = np.mean(matrix, axis=0)
+    n_train = len(values) // 2
+    train = values[:n_train]
+    calibration = values[n_train:]
 
-    two_sided_ranks = np.empty((n_samples, n_eg), dtype=float)
+    center = train.mean(axis=0)
+    deviations = np.abs(train - center)
 
-    for eg_index in range(n_eg):
-        ranks = midranks(matrix[:, eg_index], atol=atol_ties)
-        two_sided_ranks[:, eg_index] = np.minimum(
-            ranks,
-            (n_samples + 1) - ranks,
-        )
+    if trim > 0.0:
+        scores = deviations.max(axis=1)
+        threshold = _order_statistic(scores, 1.0 - trim)
+        deviations = deviations[scores <= threshold]
 
-    n_keep = int(np.ceil(mass * n_samples))
-    n_keep = max(1, min(n_samples, n_keep))
+    shape = np.maximum(deviations.max(axis=0), 1.0e-10)
 
-    keep = _least_extreme_indices(two_sided_ranks, n_keep=n_keep)
-    kept_curves = matrix[keep, :]
+    scores = np.max(np.abs(calibration - center) / shape, axis=1)
 
-    lower = np.min(kept_curves, axis=0)
-    upper = np.max(kept_curves, axis=0)
+    cutoff = _order_statistic(scores, mass)
 
-    return eg_axis, center, lower, upper
+    lower = center - cutoff * shape
+    upper = center + cutoff * shape
+
+    if np.all(values >= 0.0):
+        lower = np.maximum(lower, 0.0)
+
+    mean = values.mean(axis=0)
+
+    return axis, mean, lower, upper
+
+
+
+

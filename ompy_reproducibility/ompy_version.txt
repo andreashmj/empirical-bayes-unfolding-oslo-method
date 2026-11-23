@@ -1,0 +1,6 @@
+Repository: https://github.com/oslocyclotronlab/ompy
+Branch: shapedev
+BDase commit: a2a55c124442c84a7015e70534a6637f7df69c41
+Local compatibility patch: reproducibility/ompy-local-changes.patch
+
+The local patch contains the changes that were necessary to make this unfolding project compatible with OMpy.

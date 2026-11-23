@@ -1,7 +1,7 @@
 dataset_kind: experimental
 output_dir: results
-dataset_id: experimental/28Si
-run_id: bayesian_pymc
+dataset_id: 28Si
+run_id: baseline
 
 prompt_path: data/h_Ex_Eg_28Si_prompt.m
 background_path: data/h_Ex_Eg_28Si_bg.m
@@ -9,19 +9,19 @@ background_path: data/h_Ex_Eg_28Si_bg.m
 mode: posterior
 transform: log
 
-ex_energies: [2000, 10000]
+ex_energies: [6500]
 rebin_factors: [4, 1]
-lower_eg_cut: "200keV"
+lower_eg_cut: "550keV"
+eg_margin: "1000keV"
 
 include_background: true
 
 background_model:
   kind: latent_gamma
-  a0: 1.0
+  a0: 0.1
 
 response_db: OSCAR2020
-sigma_eg_gen: "30keV"
-sigma_eg_unfold: "30keV"
+fwhm_eg_unfold: "30keV"
 
 prior_config: configs/priors/gamma_lognormal_mean_rl/baseline.yaml
 sample_config: configs/samplers/pymc.yaml
@@ -30,19 +30,5 @@ save_trace: true
 debug: true
 rng_seed: 100
 
-freq_iterations: 10000
-freq_bootstrap: 1000
-freq_bootstrap_seed: 123
-freq_ci_method: "bonferroni percentile"
-freq_ci_summary: "mean"
-freq_ci_alpha: 0.05
-freq_mask: "last nonzero"
-freq_initial: "raw"
 
-freq_penalty: "sparsity"
-freq_sparsity_alpha: 100.0
-freq_sparsity_threshold: 0.1
-freq_sparsity_smoothing: 100.0
 
-iterative_iterations: 40
-iterative_background: "subtract"

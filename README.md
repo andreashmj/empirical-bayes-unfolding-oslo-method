@@ -1,18 +1,15 @@
 # Empirical-Bayes unfolding of γ-ray spectra
 
-This repository contains the code used for the article "Empirical-Bayes unfolding of γ-ray spectra".
+In this repository, you find the code used to produce the results and figures for the article "Empirical-Bayes unfolding of γ-ray spectra".
 
-The code implements a Bayesian unfolding model for Oslo-method
-γ-ray spectra. The method uses a Poisson forward model, an empirical-Bayes prior
-based on a Richardson-Lucy reference estimate, and posterior sampling with
-PyMC/NUTS.
+The empirical-Bayes unfolding method targets unfolding of Oslo-method γ-ray spectra. It utilizes a joint ON/OFF Poisson likelihood, an empirical-Bayes
+prior based on a Richardson-Lucy reference estimate, and PyMC/NUTS for posterior sampling.
 
-The repository also contains the configuration files and plotting scripts used
-for the article figures, as well as scripts for the comparison with the OMpy
-RMLE unfolding method.
+The repository includes all the configuration files and plotting scripts used for the runs and figure creation. Moreover, it contains the scripts used to run 
+RMLE and the standard iterative unfolding for the same cases as the Bayesian method.
 
-Large result files are not stored in this GitHub repository. They are
-archived on Zenodo.
+
+For access to the generated result files, see the archive on Zenodo.
 
 ## Repository setup
 
@@ -20,7 +17,7 @@ The main parts of the repository are
 
 ```text
 src/
-    Source code for the Bayesian model, priors, uncertainty estimates, figures, and frequentist comparison
+    Source code for the Bayesian model, priors, adaptive maximum-deviation envelopes, figures, and frequentist comparison
 
 configs/
     Configuration files with settings for the runs, priors, and samplers
@@ -28,14 +25,8 @@ configs/
 data/
     Input data files used to generate the results
 
-examples/
-    Small example runs
-
-tests/
-    Tests for the code base
-
-reproducibility/
-    OMpy version and local patch for compatibility
+ompy_reproducibility/
+    OMpy version and patch with modifications to the OMpy source code.
 ```
 
 Result files are written to `results/`, and figures are stored in the folder `figures/`.
@@ -49,7 +40,7 @@ conda env create -f environment.yml
 conda activate empirical-bayes-unfolding
 ```
 
-OMpy is required for accessing the OSCAR response and for the comparison with the frequentist methods. The results in the article used the `shapedev` branch of OMpy at commit
+OMpy is required for accessing the OSCAR response and for the comparison with the frequentist methods.
 
 ```text
 a2a55c124442c84a7015e70534a6637f7df69c41
@@ -58,13 +49,13 @@ a2a55c124442c84a7015e70534a6637f7df69c41
 with the local patch
 
 ```text
-reproducibility/ompy-local-changes.patch
+ompy_reproducibility/ompy-local-changes.patch
 ```
 
 One way to install the same OMpy version is
 
 ```bash
-PROJECT_ROOT="$(pwd)"
+ROOT="$(pwd)"
 OMPY_DIR="../ompy-paper"
 
 git clone --branch shapedev --single-branch \
@@ -75,10 +66,10 @@ git -C "$OMPY_DIR" checkout --detach \
   a2a55c124442c84a7015e70534a6637f7df69c41
 
 git -C "$OMPY_DIR" apply --check --whitespace=nowarn \
-  "$PROJECT_ROOT/reproducibility/ompy-local-changes.patch"
+  "$ROOT/ompy_reproducibility/ompy-local-changes.patch"
 
 git -C "$OMPY_DIR" apply --whitespace=nowarn \
-  "$PROJECT_ROOT/reproducibility/ompy-local-changes.patch"
+  "$ROOT/ompy_reproducibility/ompy-local-changes.patch"
 
 python -m pip install -e "$OMPY_DIR"
 ```
@@ -104,13 +95,7 @@ For example, the high-statistics baseline posterior run can be executed by
 
 ```bash
 python -m src.run_unfolding \
-  -c configs/runs/paper/high_stat/baseline/posterior.yaml
-```
-
-The main configurations used for the article can be found in the folder
-
-```text
-configs/runs/paper/
+  -c configs/runs/synthetic/high_stat/baseline/posterior.yaml
 ```
 
 
@@ -129,7 +114,7 @@ The figures are saved to `figures/`.
 
 ## Result files
 
-The results are stored in `draws.nc` files. The main output is the posterior draws of the emitted spectrum. The files also include the observed spectra, truth vectors for synthetic runs, and the response matrices used in the run.
+The results are stored in `draws.nc` files. The main output is the posterior draws of the excitation-energy-smeared emitted spectrum. 
 
 The code uses the right-hand convention for applying the response operators
 
@@ -139,7 +124,7 @@ nu = x @ D @ G_g
 ```
 
 Here `eta` is the resolution-limited spectrum and `nu` is the expected detected
-signal. The code uses `x` for the emitted spectrum variable, which is `mu` in the article. 
+signal.
 
 ## Citation
 
